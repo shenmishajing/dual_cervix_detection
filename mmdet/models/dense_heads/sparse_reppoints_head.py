@@ -11,7 +11,7 @@ from .anchor_free_head import AnchorFreeHead
 
 
 @HEADS.register_module()
-class SparseRepPoints(AnchorFreeHead):
+class SparseRepPointsHead(AnchorFreeHead):
 
     def __init__(self,
                  num_classes,
@@ -112,10 +112,9 @@ class SparseRepPoints(AnchorFreeHead):
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
         self.concat_feat_convs = nn.ModuleList()
         for i in range(self.stacked_convs):
-            chn = concat_feat_channels if (i + 1 < self.stacked_convs) else self.point_feat_channels
             self.concat_feat_convs.append(
                 nn.Conv1d(concat_feat_channels,
-                          chn,
+                          concat_feat_channels,
                           3, 1, 1))
 
         self.reg_conv = nn.Conv1d(concat_feat_channels,
@@ -129,7 +128,7 @@ class SparseRepPoints(AnchorFreeHead):
                                   concat_feat_channels // 2,
                                   3, 1, 1)
         self.cls_out = nn.Conv1d(concat_feat_channels // 2,
-                                 self.num_classes,
+                                 self.num_classes + 1,
                                  1, 1, 0)
         
     def init_weights(self):
@@ -171,24 +170,23 @@ class SparseRepPoints(AnchorFreeHead):
         objectness = self.objectness_sigmoid_out(
             self.objectness_out(self.objectness_conv(feat)))
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
-        topn_objectness, topn_idx = torch.topk(objectness, self.top_k)
-
+        topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
         w = objectness.shape[-1]
         # - topn_grid_coord shape = [B, 2, topn] 
-        topn_grid_coord = torch.stack([idx[:, 0] / w, idx[:, 1] % w], axis=1)
+        topn_grid_coord = torch.stack([topn_idx[..., -2] / w, topn_idx[..., -1] % w], axis=1)
         # - topn_offset shape = [B, 2 * num_points, topn]
-        topn_offset = torch.gather(offset, -1, topn_idx)
+        topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
         topn_points = topn_points / w 
 
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
-        topn_feat = topn_feat.view((-1, self.num_points * self.point_feat_channels))
+        topn_feat = topn_feat.view((topn_feat.shape[0] , self.num_points * self.point_feat_channels, -1))
 
         topn_points_encoded = topn_points
         for conv in self.encode_points_convs:
             topn_points_encoded = conv(topn_points_encoded)
-        
+
         topn_feat_concat = torch.cat([topn_feat, topn_points_encoded], axis=-2)
         for conv in self.concat_feat_convs:
             topn_feat_concat = conv(topn_feat_concat)
@@ -207,5 +205,9 @@ class SparseRepPoints(AnchorFreeHead):
         pass
 
     def loss(self):
+
+        pass
+
+    def get_bboxes(self):
 
         pass
