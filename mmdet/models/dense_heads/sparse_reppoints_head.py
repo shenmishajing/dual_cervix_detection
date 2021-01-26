@@ -16,23 +16,24 @@ class SparseRepPointsHead(AnchorFreeHead):
     def __init__(self,
                  num_classes,
                  in_channels,
+                 feat_channels=256,
                  point_feat_channels=256,
                  num_points=9,
                  top_k=100,
                  stacked_linears=3,
-                 gradient_mul=0.1,
                  output_strides=[8, 16, 32, 64, 128],
-                 point_base_scale=4,
+                 loss_obj=dict(
+                    type='CrossEntropyLoss',
+                    use_sigmoid=True),
+                 loss_bbox=dict(
+                    type='SmoothL1Loss'),
                  loss_cls=dict(
-                     type='FocalLoss',
-                     use_sigmoid=True,
-                     gamma=2.0,
-                     alpha=0.25,
-                     loss_weight=1.0),
-                 loss_bbox_init=dict(
-                     type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=0.5),
-                 loss_bbox_refine=dict(
-                     type='SmoothL1Loss', beta=1.0 / 9.0, loss_weight=1.0),
+                    type='FocalLoss',
+                    use_sigmoid=True,
+                    gamma=2.0,
+                    alpha=0.25,
+                    loss_weight=1.0),
+                 train_cfg=dict(assigner=dict(type='HungarianAssigner')),
                  **kwargs):
 
         self.stacked_linears = stacked_linears
@@ -40,15 +41,14 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.num_points = num_points
         self.point_feat_channels = point_feat_channels
         self.top_k = top_k
-        # we use deform conv to extract points features
+
         self.dcn_kernel = int(np.sqrt(num_points))
         self.dcn_pad = int((self.dcn_kernel - 1) / 2)
         assert self.dcn_kernel * self.dcn_kernel == num_points, \
             'The points number should be a square number.'
         assert self.dcn_kernel % 2 == 1, \
             'The points number should be an odd square number.'
-        dcn_base = np.arange(-self.dcn_pad,
-                             self.dcn_pad + 1).astype(np.float64)
+        dcn_base = np.arange(-self.dcn_pad,self.dcn_pad + 1).astype(np.float64)
         # - dcn_base_y = array([-1, -1, -1,  0,  0,  0,  1,  1,  1])
         dcn_base_y = np.repeat(dcn_base, self.dcn_kernel)
         # - dcn_base_x = array([-1,  0,  1, -1,  0,  1, -1,  0,  1])
@@ -60,25 +60,34 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         super().__init__(num_classes, in_channels, loss_cls=loss_cls, **kwargs)
 
-        self.gradient_mul = gradient_mul
-        self.point_base_scale = point_base_scale
         self.output_strides = output_strides
 
         self.sampling = loss_cls['type'] not in ['FocalLoss']
+        #TODO debug
+        self.train_cfg = train_cfg
         if self.train_cfg:
-            self.assigner = build_assigner(self.train_cfg.assigner)
-            # - use PseudoSampler when sampling is False
-            if self.sampling and hasattr(self.train_cfg, 'sampler'):
-                sampler_cfg = self.train_cfg.sampler
-            else:
-                #- A pseudo sampler that does not do sampling actually.Directly returns the positive and negative indices  of samples.
-                sampler_cfg = dict(type='PseudoSampler')
-            self.sampler = build_sampler(self.train_cfg.sampler)
+            self.assigner = build_assigner(self.train_cfg["assigner"])
+            # # - use PseudoSampler when sampling is False
+            # if self.sampling and hasattr(self.train_cfg, 'sampler'):
+            #     sampler_cfg = self.train_cfg["sampler"]
+            # else:
+            #     #- A pseudo sampler that does not do sampling actually.Directly returns the positive and negative indices  of samples.
+            sampler_cfg = dict(type='PseudoSampler')
+            self.sampler = build_sampler(sampler_cfg)
+        self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
+        if self.use_sigmoid_cls: 
+            self.cls_out_channels = self.num_classes + 1
+        else:
+            self.cls_out_channels = self.num_classes
+            
+        self.loss_obj = build_loss(loss_obj)
+        self.loss_bbox = build_loss(loss_bbox)
+        self.loss_cls = build_loss(loss_cls)
         
     def _init_layers(self):
         """Initialize layers of the head."""
 
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=True).cuda()
 
         self.convs = nn.ModuleList()
         for i in range(self.stacked_convs):  # - stacked_convs = 3
@@ -91,23 +100,23 @@ class SparseRepPointsHead(AnchorFreeHead):
                     stride=1,
                     padding=1,
                     conv_cfg=self.conv_cfg,
-                    norm_cfg=self.norm_cfg))
+                    norm_cfg=self.norm_cfg).cuda())
         
         pts_out_dim = 2 * self.num_points
         self.offset_conv = nn.Conv2d(self.feat_channels,
                                       self.point_feat_channels,
-                                      3, 1, 1)
+                                      3, 1, 1).cuda()
         self.offset_out = nn.Conv2d(self.point_feat_channels,
                                      pts_out_dim,
-                                     1, 1, 0)
+                                     1, 1, 0).cuda()
 
         self.objectness_conv = nn.Conv2d(self.feat_channels,
                                          self.feat_channels,
-                                         3, 1, 1)
+                                         3, 1, 1).cuda()
         self.objectness_out = nn.Conv2d(self.point_feat_channels,
                                         1,
-                                        1, 1, 0)
-        self.objectness_sigmoid_out = nn.Sigmoid()
+                                        1, 1, 0).cuda()
+        self.objectness_sigmoid_out = nn.Sigmoid().cuda()
 
         self.encode_points_convs = nn.ModuleList()
         for i in range(self.stacked_convs):
@@ -115,7 +124,7 @@ class SparseRepPointsHead(AnchorFreeHead):
             self.encode_points_convs.append(
                 nn.Conv1d(chn,
                           self.point_feat_channels,
-                          3, 1, 1))
+                          3, 1, 1).cuda())
 
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
         self.concat_feat_convs = nn.ModuleList()
@@ -123,21 +132,21 @@ class SparseRepPointsHead(AnchorFreeHead):
             self.concat_feat_convs.append(
                 nn.Conv1d(concat_feat_channels,
                           concat_feat_channels,
-                          3, 1, 1))
+                          3, 1, 1).cuda())
 
         self.reg_conv = nn.Conv1d(concat_feat_channels,
                                   concat_feat_channels // 2,
-                                  3, 1, 1)
+                                  3, 1, 1).cuda()
         self.reg_out = nn.Conv1d(concat_feat_channels // 2,
                                  4,
-                                 1, 1, 0)
+                                 1, 1, 0).cuda()
 
         self.cls_conv = nn.Conv1d(concat_feat_channels,
                                   concat_feat_channels // 2,
-                                  3, 1, 1)
+                                  3, 1, 1).cuda()
         self.cls_out = nn.Conv1d(concat_feat_channels // 2,
                                  self.num_classes + 1,
-                                 1, 1, 0)
+                                 1, 1, 0).cuda()
         
     def init_weights(self):
         for m in self.convs:
@@ -153,7 +162,7 @@ class SparseRepPointsHead(AnchorFreeHead):
             normal_init(m, std=0.01)
         
         for m in self.concat_feat_convs:
-            normal_init(m.conv, std=0.01)
+            normal_init(m, std=0.01)
         
         normal_init(self.reg_conv, std=0.01)
         normal_init(self.reg_out, std=0.01)
@@ -168,11 +177,13 @@ class SparseRepPointsHead(AnchorFreeHead):
         # - Forward feature map of a single FPN level.
         # - dcn_base_offset.shape = [1, 18, 1] 18: (-1, -1), (-1, 0)...
         dcn_base_offset = self.dcn_base_offset.type_as(x)
-
+        # print("dcn_base_offset", dcn_base_offset.device)
         feat = x 
         for conv in self.convs:
+            # print("feat", feat.device)
+            # print("conv", conv.conv.weight.device)
             feat = conv(feat)
-
+        # print("feat", feat.device)
         offset = self.offset_out(
             self.relu(self.offset_conv(feat)))
         objectness = self.objectness_sigmoid_out(
@@ -202,6 +213,12 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
         topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
 
+        # - [B, 1, H, W] -> [B, H, W]
+        # objectness = torch.squeeze(objectness)
+        # - [B, 4, topn] -> [B, topn ,4]
+        topn_box = torch.transpose(topn_box, -2, -1)
+        topn_cls = torch.transpose(topn_cls, -2, -1)
+        topn_idx = torch.transpose(topn_idx, -2, -1)
         return objectness, topn_box, topn_cls, topn_idx
 
     def _get_objectness_single(self, gt_bboxes, img_meta, output_strides, objectness_shape_list):
@@ -253,29 +270,30 @@ class SparseRepPointsHead(AnchorFreeHead):
                     objectness_list.append(objectness[None, :])
         else:
             objectness_list = [torch.zeros((1, h, w), dtype=torch.float, device=device) for (h,w) in objectness_shape_list]
-
+        
+        # print("objectness_single", [obj.shape for obj in objectness_list])
         return objectness_list
 
-    def _get_objectness(self, gt_bboxes_list, img_metas, output_strides):
+    def _get_objectness(self, gt_bboxes_list, img_metas, output_strides, objectness_shape_list):
         """
             Args:
                 gt_bboxes_list (list): [img1_gt_bboxes_tensor, img2_gt_bboxes_tensor, ...] 
                 img_metas (list): [img1_metas, img2_metas, ...]
                 output_strides (list): [8, 16, 32, 64, 128]
-            
+                objectness_shape_list (list): [(level1_h, level1_w), (level2_h, level2_w), ...]
             Returns:
-                objectness_list (list): [img1_objectness_list, img2_objectness_list, ...]
-                    !img1_objectness_level1 shape = (1, h1, w1)
+                objectness_list (list): [level1_obj, level2_obj, ...]
+                    !level1_obj shape = (num_imgs, 1, h_level1, w_level1)
         """
-        objectness_shape_list = [
-            (int((img_metas[0]["batch_input_shape"][0] + s - 1) / s), int((img_metas[0]["batch_input_shape"][1] + s -1) / s)) for s in self.output_strides
-        ]
+        
         batch_size = len(gt_bboxes_list)
-        return multi_apply(self._get_objectness_single,
-                           gt_bboxes_list,
-                           img_metas,
-                           [output_strides] * batch_size,
-                           [objectness_shape_list] * batch_size)
+        objectness_list =  multi_apply(self._get_objectness_single,
+                                       gt_bboxes_list,
+                                       img_metas,
+                                       output_strides=output_strides,
+                                       objectness_shape_list=objectness_shape_list)
+        objectness_list = [torch.stack(objectness, dim=0) for objectness in objectness_list]
+        return objectness_list
 
     def _get_targets_single(self, 
                             cat_bbox_pred,
@@ -310,14 +328,24 @@ class SparseRepPointsHead(AnchorFreeHead):
                 pos_inds (tensor): shape = (num_level * topn, )
                 neg_inds (tensor): shape = (num_level * topn, )
         """
-        inside_flags = valid_flags
+        # print(cat_bbox_pred.shape)
+        # print(cat_cls_pred.shape)
+        # print(valid_flags.shape)
+        # print(gt_bboxes.shape)
+        # print(gt_labels.shape)
+        # print(img_meta)
+        # exit(-1)
+        inside_flags = torch.squeeze(valid_flags)
         if not inside_flags.any():
             return (None, ) * 7
         
         bbox_pred = cat_bbox_pred[inside_flags, :]
         cls_pred = cat_cls_pred[inside_flags, :]
 
-        pos_weight = self.train_cfg.pos_weight
+        # TODO 改掉下面的取参数的用法
+        # pos_weight = self.train_cfg.pos_weight
+        pos_weight = self.train_cfg["pos_weight"]
+
         assign_result = self.assigner.assign(bbox_pred, 
                                              cls_pred, 
                                              gt_bboxes, 
@@ -360,13 +388,19 @@ class SparseRepPointsHead(AnchorFreeHead):
             bbox_gt = unmap(bbox_gt, num_total_bbox_pred, inside_flags)
             pos_bbox_pred = unmap(pos_bbox_pred, num_total_bbox_pred, inside_flags)
             bbox_pred_weights = unmap(bbox_pred_weights, num_total_bbox_pred, inside_flags)
-
+        
+        # print("labels.shape", labels.shape)
+        # print("label_weights.shape", label_weights.shape)
+        # print("bbox_gt.shape", bbox_gt.shape)
+        # print("pos_bbox_pred.shape", pos_bbox_pred.shape)
+        # print("bbox_pred_weights.shape", bbox_pred_weights.shape)
         return (labels, label_weights, 
                 bbox_gt, 
                 pos_bbox_pred, bbox_pred_weights,
                 pos_inds, neg_inds)
 
     def get_targets(self,
+                    objectness_pred_list,
                     bbox_pred_list,
                     cls_pred_list,
                     valid_flag_list,
@@ -382,15 +416,24 @@ class SparseRepPointsHead(AnchorFreeHead):
             分类和回归需要先进行匹配，生成和预测框一样大小的target，在对应位置填上对应值
 
             Args:
-                bbox_pred_list (list[list]): Multi level bboxes of each image.
-                cls_pred_list (list[list]): Multi level cls of each image.
-                valid_flag_list (list[list]): Multi level valid flags of each
-                    image.
-                gt_bboxes_list (list[Tensor]): Ground truth bboxes of each image.
-                img_metas (list[dict]): Meta info of each image.
+                objectness_pred_list (list[tensor]): [level1_obj_tensor, level2_obj_tensor, ...]
+                    level1_obj_tensor: [num_imgs, 1, H, W]
+                bbox_pred_list (list[list]): [img1_bbox_list, img2_bbox_list, ...], 
+                    img1_bbox_list = [level1_bbox_tensor, level2_bbox_tensor, ...], 
+                    level1_bbox_tensor shape = [topn, 4]
+                cls_pred_list (list[list]): [img1_cls_list, img2_cls_list, ...]
+                    img1_cls_list = [level1_cls_tensor, level2_cls_tensor, ...]
+                    level1_cls_tensor shape = [topn, num_cls]
+                valid_flag_list (list[list]): [img1_flag_list, img2_flag_list, ...]
+                    img1_flag_list = [level1_flag_tensor, level2_flag_tensor]
+                    level1_flag_tensor shape = [topn, 1]
+                gt_bboxes_list (list[Tensor]): [img1_box_tensor, img2_box_tensor, ...]
+                    img1_box_tensor shape = [img1_num_box, 4]
+                img_metas (list[dict]): [img1_meta, img2_meta, ...]
                 gt_bboxes_ignore_list (list[Tensor]): Ground truth bboxes to be
                     ignored.
-                gt_labels_list (list[Tensor]): Ground truth labels of each box.
+                gt_labels_list (list[Tensor]): [img1_label_tensor, img2_label_tensor]
+                    img_label_tensor shape = [img1_num_box,]
                 stage (str): `init` or `refine`. Generate target for init stage or
                     refine stage
                 label_channels (int): Channel of label.
@@ -411,16 +454,22 @@ class SparseRepPointsHead(AnchorFreeHead):
         num_imgs = len(img_metas)
         
         # - objecness
-        gt_objectness_list = self._get_objectness(gt_bboxes_list, img_metas, output_strides)
-        gt_objectness_list = images_to_levels(gt_objectness_list, num_levels)
-
+        objectness_shape_list = [obj.shape[-2:] for obj in objectness_pred_list]
+        gt_objectness_list = self._get_objectness(gt_bboxes_list, img_metas, self.output_strides, objectness_shape_list)
         # - cls_target, reg_target
         #- concat all level bbox_pred and flag to a single tensor
         for i in range(num_imgs):
             assert len(bbox_pred_list[i]) == len(valid_flag_list[i])
-            bbox_pred_list[i] = torch.cat(bbox_pred_list[i])
-            valid_flag_list[i] = torch.cat(valid_flag_list[i])
-        
+            bbox_pred_list[i] = torch.cat(bbox_pred_list[i], dim=0)
+            cls_pred_list[i] = torch.cat(cls_pred_list[i], dim=0)
+            valid_flag_list[i] = torch.cat(valid_flag_list[i], dim=0)
+        #- [torch.Size([50, 4]), torch.Size([50, 4])]
+        #- [torch.Size([50, 81]), torch.Size([50, 81])]
+        #- [torch.Size([50, 1]), torch.Size([50, 1])]
+        # print([bbox.shape for bbox in bbox_pred_list])
+        # print([clss.shape for clss in cls_pred_list])
+        # print([flag.shape for flag in valid_flag_list])
+        # exit(-1)
         # - compute targets for each image
         if gt_bboxes_ignore_list is None:
             gt_bboxes_ignore_list = [None] * num_imgs
@@ -432,24 +481,30 @@ class SparseRepPointsHead(AnchorFreeHead):
          all_bbox_pred, all_bbox_pred_weights,
          pos_inds_list, neg_inds_list) = multi_apply(self._get_targets_single,
                                                      bbox_pred_list, cls_pred_list, valid_flag_list,
-                                                     gt_bboxes_list, img_metas,
-                                                     gt_bboxes_ignore_list, gt_labels_list,
-                                                     label_channels,
-                                                     unmap_outputs)
+                                                     gt_bboxes_list, gt_labels_list,
+                                                     img_metas,
+                                                     gt_bboxes_ignore_list,
+                                                     label_channels=label_channels,
+                                                     unmap_outputs=unmap_outputs)
+        # print("all_labels.shape", [l.shape for l in all_labels])
+        # print("all_label_weights.shape", [lw.shape for lw in all_label_weights])
+        # print("all_bbox_gt.shape", [b.shape for b in all_bbox_gt])
+        # print("all_bbox_pred.shape", [bp.shape for bp in all_bbox_pred])
+        # print("all_bbox_pred_weights.shape", [a.shape for a in all_bbox_pred_weights])
         if any([labels is None for labels in all_labels]):
             return None
         
         num_total_pos = sum([max(inds.numel(), 1) for inds in pos_inds_list])
         num_total_neg = sum([max(inds.numel(), 1) for inds in neg_inds_list])
-
-        labels_list = images_to_levels(all_labels, num_levels)
-        labels_weights_list = images_to_levels(all_label_weights, num_levels)
-        bbox_gt_list = images_to_levels(all_bbox_gt, num_levels)
-        bbox_pred_list = images_to_levels(all_bbox_pred, num_levels)
-        bbox_pred_weights_list = images_to_levels(all_bbox_pred_weights, num_levels)
+        num_level_list = [self.top_k for _ in range(num_levels)]
+        labels_list = images_to_levels(all_labels, num_level_list)
+        labels_weights_list = images_to_levels(all_label_weights, num_level_list)
+        bbox_gt_list = images_to_levels(all_bbox_gt, num_level_list)
+        bbox_pred_list = images_to_levels(all_bbox_pred, num_level_list)
+        bbox_pred_weights_list = images_to_levels(all_bbox_pred_weights, num_level_list)
 
         return (gt_objectness_list,
-                labels_list, label_weights_list,
+                labels_list, labels_weights_list,
                 bbox_gt_list,
                 bbox_pred_list, bbox_pred_weights_list,
                 num_total_pos, num_total_neg)
@@ -474,7 +529,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         valid = valid_xx & valid_yy
         return valid
 
-
     def loss(self,
              objectness_pred,
              bbox_pred,
@@ -485,13 +539,15 @@ class SparseRepPointsHead(AnchorFreeHead):
              img_metas,
              gt_bboxes_ignore=None):
         """
-            loss
-
             Args:
                 objectness_pred (list[tensor]): [level1_obj_tensor, level2_obj_tensor, ...]
+                    level1_obj_tensor: [num_imgs, 1, H, W]
                 bbox_pred (list[tensor]): [level1_bbox_tensor, level2_bbox_tensor, ...]
+                    level1_bbox_tensor: [num_imgs, topn, 4]
                 cls_pred (list[tensor]): [level1_cls_tensor, level2_cls_tensor, ...]
+                    level1_cls_tensor: [num_imgs, topn, num_cls]
                 topn_idx (list[tensor]): [level1_idx_tensor, level2_idx_tensor, ...]
+                    level1_idx_tensor: [num_imgs, topn, 1]
                 gt_bboxes (list[tensor]): [img1_gt_bbox_tensor, img2_gt_bbox_tensor, ...]
                 gt_labels (list[tensor]): [img1_gt_label_tensor, img2_gt_label_tensor, ...]
                 img_metas (list[dict]): [img1_meta, img2_meta, ...]
@@ -500,32 +556,47 @@ class SparseRepPointsHead(AnchorFreeHead):
             Returns:
                 loss_dcit_all: {objectness_loss, bbox_loss, cls_loss}
         """
+        # print(objectness_pred[0].device)
+        # print(bbox_pred[0].device)
+        # print(cls_pred[0].device)
+        # print(topn_idx[0].device)
+        # print(gt_bboxes[0].device)
+        # print(gt_labels[0].device)
         num_imgs = len(img_metas)
         num_levels = len(objectness_pred)
         device = gt_bboxes[0].device
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
 
-        bbox_pred_list = [[] * num_imgs]
-        cls_pred_list = [[] * num_imgs]
-        valid_flag_list = [[] * num_imgs]
+        bbox_pred_list = [] 
+        cls_pred_list = [] 
+        valid_flag_list = [] 
         for i_img, img_meta in enumerate(img_metas):
+            tmp_bbox = []
+            tmp_cls = []
+            tmp_flag = []
             for i_lvl in range(num_levels):
-                bbox_pred_list[i_img].append(bbox_pred[i_lvl][i_img])
-                cls_pred_list[i_img].append(cls_pred[i_lvl][i_img])
+                tmp_bbox.append(bbox_pred[i_lvl][i_img])
+                tmp_cls.append(cls_pred[i_lvl][i_img])
         
                 s = self.output_strides[i_lvl]
                 feat_h, feat_w = objectness_pred[i_lvl].shape[-2:]
-                h,w = img_meta['pad_shape'][:2]
+                h, w = img_meta['pad_shape'][:2]
                 valid_feat_h = min(int((h + s - 1) / s), feat_h)
                 valid_feat_w = min(int((w + s - 1) / s), feat_w)
+                # !  topn_idx[i_lvl][i_img] shape = (topn, 1)
                 flags = self.get_valid_flag((feat_h, feat_w), (valid_feat_h, valid_feat_w), device)
-                valid_flag_list[i_img].append(flags)
-        
+                flags = torch.gather(flags.view(-1, 1), 0, topn_idx[i_lvl][i_img])
+                # - flags shape = [topn, 1]
+                tmp_flag.append(flags)
+            bbox_pred_list.append(tmp_bbox)
+            cls_pred_list.append(tmp_cls)
+            valid_flag_list.append(tmp_flag)
 
         (gt_objectness_list,
          labels_list, label_weights_list,
          bbox_gt_list, bbox_pred_list, bbox_pred_weights_list,
-         num_total_pos, num_total_neg) = self.get_targets(bbox_pred_list,
+         num_total_pos, num_total_neg) = self.get_targets(objectness_pred,
+                                                          bbox_pred_list,
                                                           cls_pred_list,
                                                           valid_flag_list,
                                                           gt_bboxes,
@@ -533,8 +604,31 @@ class SparseRepPointsHead(AnchorFreeHead):
                                                           gt_bboxes_ignore,
                                                           gt_labels,
                                                           label_channels)
+        num_level_list = [self.top_k for _ in range(num_levels)]                                                  
+        cls_pred_list = images_to_levels(cls_pred_list, num_level_list)
+        # print([gt_obj.shape for gt_obj in gt_objectness_list])
+        # print([box.shape for box in bbox_gt_list])
+        # print([lbl.shape for lbl in labels_list])
         
+        # print([obj_pred.shape for obj_pred in objectness_pred])
+        # print([box_pred.shape for box_pred in bbox_pred_list])
+        # print([cls_pred.shape for cls_pred in cls_pred_list])
+        # exit(-1)
+        num_total_samples = (num_total_pos + num_total_neg) if self.sampling else num_total_pos
+        loss_obj, loss_bbox, loss_cls = multi_apply(self.loss_single,
+                                                    objectness_pred,
+                                                    bbox_pred_list,
+                                                    cls_pred_list,
+                                                    gt_objectness_list,
+                                                    bbox_gt_list, bbox_pred_weights_list,
+                                                    labels_list, label_weights_list,
+                                                    num_total_samples=num_total_samples)
 
+        loss_dict_all = {
+            'loss_obj': loss_obj,
+            'loss_bbox': loss_bbox,
+            'loss_cls': loss_cls
+        }
 
         return loss_dict_all
 
@@ -542,10 +636,43 @@ class SparseRepPointsHead(AnchorFreeHead):
                     objectness_pred,
                     bbox_pred,
                     cls_pred,
-                    objecness_gt, objectness_weights,
+                    objecness_gt,
                     bbox_gt, bbox_weights,
-                    cls_gt, cls_weights):
+                    cls_gt, cls_weights,
+                    num_total_samples):
+        """
+            在不同scale下进行
 
+            Args:
+                objectness_pred (tensor): [description]
+                bbox_pred (tensor): [description]
+                cls_pred (tensor): [description]
+                objecness_gt (tensor): [description]
+                bbox_gt (tensor): [description]
+                bbox_weights (tensor): [description]
+                cls_gt (tensor): [description]
+                cls_weights (tensor): [description]
+                num_total_samples (int): [description]
+
+            Returns:
+                loss_obj, loss_bbox, loss_cls
+        """
+
+        loss_obj = self.loss_obj(objectness_pred,objecness_gt)
+        
+        loss_bbox = self.loss_bbox(bbox_pred,
+                                   bbox_gt,
+                                   bbox_weights,
+                                   avg_factor=num_total_samples)
+    
+        cls_pred = cls_pred.reshape((-1, self.cls_out_channels))
+        cls_gt = cls_gt.reshape((-1,))
+        cls_weights = cls_weights.reshape((-1,))
+        # print([cls_pred.shape, cls_gt.shape, cls_weights.shape])
+        loss_cls = self.loss_cls(cls_pred,
+                                 cls_gt,
+                                 cls_weights,
+                                 avg_factor=num_total_samples)
 
         return loss_obj, loss_bbox, loss_cls
 
@@ -554,6 +681,5 @@ class SparseRepPointsHead(AnchorFreeHead):
         pass
 
     def _get_bboxes_single(self):
-
 
         pass
