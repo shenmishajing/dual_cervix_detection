@@ -76,9 +76,9 @@ class SparseRepPointsHead(AnchorFreeHead):
             self.sampler = build_sampler(sampler_cfg)
         self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
         if self.use_sigmoid_cls: 
-            self.cls_out_channels = self.num_classes + 1
-        else:
             self.cls_out_channels = self.num_classes
+        else:
+            self.cls_out_channels = self.num_classes + 1
             
         self.loss_obj = build_loss(loss_obj)
         self.loss_bbox = build_loss(loss_bbox)
@@ -145,7 +145,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                                   concat_feat_channels // 2,
                                   3, 1, 1).cuda()
         self.cls_out = nn.Conv1d(concat_feat_channels // 2,
-                                 self.num_classes + 1,
+                                 self.cls_out_channels,
                                  1, 1, 0).cuda()
         
     def init_weights(self):
@@ -556,12 +556,6 @@ class SparseRepPointsHead(AnchorFreeHead):
             Returns:
                 loss_dcit_all: {objectness_loss, bbox_loss, cls_loss}
         """
-        # print(objectness_pred[0].device)
-        # print(bbox_pred[0].device)
-        # print(cls_pred[0].device)
-        # print(topn_idx[0].device)
-        # print(gt_bboxes[0].device)
-        # print(gt_labels[0].device)
         num_imgs = len(img_metas)
         num_levels = len(objectness_pred)
         device = gt_bboxes[0].device
@@ -606,14 +600,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                                                           label_channels)
         num_level_list = [self.top_k for _ in range(num_levels)]                                                  
         cls_pred_list = images_to_levels(cls_pred_list, num_level_list)
-        # print([gt_obj.shape for gt_obj in gt_objectness_list])
-        # print([box.shape for box in bbox_gt_list])
-        # print([lbl.shape for lbl in labels_list])
-        
-        # print([obj_pred.shape for obj_pred in objectness_pred])
-        # print([box_pred.shape for box_pred in bbox_pred_list])
-        # print([cls_pred.shape for cls_pred in cls_pred_list])
-        # exit(-1)
+
         num_total_samples = (num_total_pos + num_total_neg) if self.sampling else num_total_pos
         loss_obj, loss_bbox, loss_cls = multi_apply(self.loss_single,
                                                     objectness_pred,
@@ -668,7 +655,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         cls_pred = cls_pred.reshape((-1, self.cls_out_channels))
         cls_gt = cls_gt.reshape((-1,))
         cls_weights = cls_weights.reshape((-1,))
-        # print([cls_pred.shape, cls_gt.shape, cls_weights.shape])
         loss_cls = self.loss_cls(cls_pred,
                                  cls_gt,
                                  cls_weights,
@@ -676,10 +662,91 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         return loss_obj, loss_bbox, loss_cls
 
-    def get_bboxes(self):
+    def get_bboxes(self, bbox_pred, cls_pred, img_metas, cfg=None, rescale=False, with_nms=False):
+        """
 
-        pass
+        Args:
+            bbox_pred (list[tensor]): [level1_bbox_pred, level2_bbox_pred, ...], 
+                level1_bbox_pred shape = [num_imgs, topn, 4]
+                4: [cx, cy, w, h]
+            cls_pred (list[tensor]): [level1_cls_pred, level2_cls_pred, ...]
+                level1_bbox_pred shape = [num_imgs, topn, num_cls]
+            img_metas (list[dict]): [img1_meta, img2_meta, ...]
+            cfg ([type], optional): [description]. Defaults to None.
+            rescale (bool, optional): [description]. Defaults to False.
+            with_nms (bool, optional): [description]. Defaults to False.
 
-    def _get_bboxes_single(self):
+        Returns:
+            result_list: 
+        """
+        device = bbox_pred[0].device
+        num_imgs = len(img_metas)
 
-        pass
+        bbox_pred = torch.concat(bbox_pred, dim=1)
+        cls_pred = torch.concat(cls_pred, dim=1)
+        
+        half_wh = bbox_pred[..., 2:] / 2
+        bbox_pred = torch.stack([
+            bbox_pred[..., ] - half_wh,
+            bbox_pred[..., ] + half_wh
+        ], dim=-1)
+
+        if self.use_sigmoid_cls:
+            cls_pred = cls_pred.sigmoid()
+        else:
+            cls_pred = cls_pred.softmax(dim=-1)
+
+        bbox_pred_list = torch.split(bbox_pred, num_imgs, dim=0)
+        cls_pred_list = torch.split(cls_pred, num_imgs, dim=0)
+        
+        result_list = [
+            self._get_bboxes_single(bbox_pred, cls_pred, img_meta, cfg, rescale, with_nms) 
+            for bbox_pred, cls_pred, img_meta in zip(bbox_pred_list, cls_pred_list, img_metas)
+        ]
+        
+        return result_list
+
+    def _get_bboxes_single(self, bbox_pred, cls_pred, img_meta, cfg, rescale=False, with_nms=False):
+        """
+
+        Args:
+            bbox_pred (tensor): shape = [num_level * topn, 4] 
+                4: [x_min, ymin, xmax, ymax]
+            cls_pred (tensor): shape = [num_level * topn, num_cls] 
+            img_meta (dict): 
+            cfg ([type]): [description]
+            rescale (bool, optional): [description]. Defaults to False.
+            with_nms (bool, optional): [description]. Defaults to False.
+        
+        Returns: 
+            det_bboxes, det_labels
+        """
+        cfg = self.test_cfg if cfg is None else cfg
+        assert len(bbox_pred) == len(cls_pred)
+        img_shape = img_meta["img_shape"]
+        x1 = bbox_pred[:, 0].clamp(min=0, max=img_shape[1])
+        y1 = bbox_pred[:, 1].clamp(min=0, max=img_shape[0])
+        x2 = bbox_pred[:, 2].clamp(min=0, max=img_shape[1])
+        y2 = bbox_pred[:, 3].clamp(min=0, max=img_shape[0])
+        bbox_pred = torch.stack([
+            x1,y1,x2,y2
+        ],dim=-1)
+        
+        scale_factor = img_meta["scale_factor"]
+        if rescale:
+            bbox_pred /= bbox_pred.new_tensor(scale_factor)
+
+        if self.use_sigmoid_cls:
+            # Add a dummy background class to the backend when using sigmoid
+            # remind that we set FG labels to [0, num_class-1] since mmdet v2.0
+            # BG cat_id: num_class
+            padding = cls_pred.new_zeros(cls_pred.shape[0], 1)
+            cls_pred = torch.cat([cls_pred, padding], dim=-1)
+
+        if with_nms:
+            det_bboxes, det_labels = multiclass_nms(bbox_pred, cls_pred,
+                                                 cfg.score_thr, cfg.nms,
+                                                 cfg.max_per_img)  
+            return det_bboxes, det_labels
+        else:
+            return bbox_pred, cls_pred
