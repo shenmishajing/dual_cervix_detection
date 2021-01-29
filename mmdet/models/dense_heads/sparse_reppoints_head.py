@@ -22,11 +22,8 @@ class SparseRepPointsHead(AnchorFreeHead):
                  top_k=10,
                  stacked_linears=3,
                  output_strides=[8, 16, 32, 64, 128],
-                 loss_obj=dict(
-                    type='CrossEntropyLoss',
-                    use_sigmoid=True),
-                 loss_bbox=dict(
-                    type='SmoothL1Loss'),
+                 loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
+                 loss_bbox=dict(type='GIoULoss'),
                  loss_cls=dict(
                     type='FocalLoss',
                     use_sigmoid=True,
@@ -37,7 +34,6 @@ class SparseRepPointsHead(AnchorFreeHead):
                  **kwargs):
 
         self.stacked_linears = stacked_linears
-
         self.num_points = num_points
         self.point_feat_channels = point_feat_channels
         self.top_k = top_k
@@ -48,20 +44,16 @@ class SparseRepPointsHead(AnchorFreeHead):
             'The points number should be a square number.'
         assert self.dcn_kernel % 2 == 1, \
             'The points number should be an odd square number.'
-        dcn_base = np.arange(-self.dcn_pad,self.dcn_pad + 1).astype(np.float64)
-        # - dcn_base_y = array([-1, -1, -1,  0,  0,  0,  1,  1,  1])
+        dcn_base = np.arange(-self.dcn_pad, self.dcn_pad + 1).astype(np.float64)
         dcn_base_y = np.repeat(dcn_base, self.dcn_kernel)
-        # - dcn_base_x = array([-1,  0,  1, -1,  0,  1, -1,  0,  1])
         dcn_base_x = np.tile(dcn_base, self.dcn_kernel)
-        dcn_base_offset = np.stack(
-            [dcn_base_y, dcn_base_x], axis=1).reshape((-1))
+        dcn_base_offset = np.stack([dcn_base_y, dcn_base_x], axis=1).reshape((-1))
         # - dcn_base_offset.shape = [1, 18, 1] 18: (-1, -1), (-1, 0)...
         self.dcn_base_offset = torch.tensor(dcn_base_offset).view(1, -1, 1)
 
         super().__init__(num_classes, in_channels, loss_cls=loss_cls, **kwargs)
 
         self.output_strides = output_strides
-
         self.sampling = loss_cls['type'] not in ['FocalLoss']
         #TODO debug
         self.train_cfg = train_cfg
@@ -79,6 +71,8 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.loss_bbox = build_loss(loss_bbox)
         self.loss_cls = build_loss(loss_cls)
         
+        self.cfg_loss_obj = loss_obj
+
     def _init_layers(self):
         """Initialize layers of the head."""
 
@@ -181,9 +175,12 @@ class SparseRepPointsHead(AnchorFreeHead):
             self.relu(self.offset_conv(feat)))
         offset = offset + dcn_base_offset.unsqueeze(dim=2)
 
-        #! 选择topn的时候，必须要经过sigmoid的，但是后面计算损失时，不需要经过sigmoid
-        objectness_logits = self.objectness_out(self.objectness_conv(feat))
-        objectness = self.objectness_sigmoid_out(objectness_logits)
+        if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
+            objectness_logits = self.objectness_out(self.objectness_conv(feat))
+            objectness = self.objectness_sigmoid_out(objectness_logits)
+        else:
+            objectness = self.objectness_sigmoid_out(
+                self.objectness_out(self.objectness_conv(feat)))
 
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
         topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
@@ -217,7 +214,11 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_box = torch.transpose(topn_box, -2, -1)
         topn_cls = torch.transpose(topn_cls, -2, -1)
         topn_idx = torch.transpose(topn_idx, -2, -1)
-        return objectness_logits, topn_box, topn_cls, topn_idx
+
+        if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
+            return objectness_logits, topn_box, topn_cls, topn_idx
+        else:
+            return objectness, topn_box, topn_cls, topn_idx
 
     def _get_objectness_single(self, gt_bboxes, img_meta, output_strides, objectness_shape_list):
         """
