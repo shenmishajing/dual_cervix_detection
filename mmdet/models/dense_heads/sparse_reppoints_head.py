@@ -384,10 +384,10 @@ class SparseRepPointsHead(AnchorFreeHead):
         #! gt box [x1,y1,x2,y2] -> [cx,cy,w,h]
         bbox_gt = torch.cat([
             (bbox_gt[..., :2] + bbox_gt[..., 2:4]) / 2,
-            bbox_gt[..., 2:4] - bbox_gt[..., 2:4]
+            bbox_gt[..., 2:4] - bbox_gt[..., :2]
         ], dim=-1)
         img_h, img_w, _ = img_meta["img_shape"]
-        factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4))
+        factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4)).cuda()
         bbox_gt /= factor
 
         return (labels, label_weights, 
