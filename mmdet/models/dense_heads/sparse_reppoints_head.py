@@ -19,7 +19,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                  feat_channels=256,
                  point_feat_channels=256,
                  num_points=9,
-                 top_k=100,
+                 top_k=10,
                  stacked_linears=3,
                  output_strides=[8, 16, 32, 64, 128],
                  loss_obj=dict(
@@ -75,11 +75,6 @@ class SparseRepPointsHead(AnchorFreeHead):
             sampler_cfg = dict(type='PseudoSampler')
             self.sampler = build_sampler(sampler_cfg)
         
-        self.use_sigmoid_cls = loss_cls.get('use_sigmoid', False)
-        if self.use_sigmoid_cls: 
-            self.cls_out_channels = self.num_classes
-        else:
-            self.cls_out_channels = self.num_classes + 1
         self.loss_obj = build_loss(loss_obj)
         self.loss_bbox = build_loss(loss_bbox)
         self.loss_cls = build_loss(loss_cls)
@@ -148,7 +143,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.cls_out = nn.Conv1d(concat_feat_channels // 2,
                                  self.cls_out_channels,
                                  1, 1, 0).cuda()
-        print("cls_out_channels", self.cls_out_channels)
 
     def init_weights(self):
         for m in self.convs:
@@ -182,10 +176,15 @@ class SparseRepPointsHead(AnchorFreeHead):
         feat = x 
         for conv in self.convs:
             feat = conv(feat)
+        
         offset = self.offset_out(
             self.relu(self.offset_conv(feat)))
-        objectness = self.objectness_sigmoid_out(
-            self.objectness_out(self.objectness_conv(feat)))
+        offset = offset + dcn_base_offset.unsqueeze(dim=2)
+
+        #! 选择topn的时候，必须要经过sigmoid的，但是后面计算损失时，不需要经过sigmoid
+        objectness_logits = self.objectness_out(self.objectness_conv(feat))
+        objectness = self.objectness_sigmoid_out(objectness_logits)
+
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
         topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
         w = objectness.shape[-1]
@@ -211,14 +210,14 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
         topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
-        # ???? 80
+        
         # - [B, 1, H, W] -> [B, H, W]
-        # objectness = torch.squeeze(objectness)
+        # objectness_logits = torch.squeeze(objectness_logits)
         # - [B, 4, topn] -> [B, topn ,4]
         topn_box = torch.transpose(topn_box, -2, -1)
         topn_cls = torch.transpose(topn_cls, -2, -1)
         topn_idx = torch.transpose(topn_idx, -2, -1)
-        return objectness, topn_box, topn_cls, topn_idx
+        return objectness_logits, topn_box, topn_cls, topn_idx
 
     def _get_objectness_single(self, gt_bboxes, img_meta, output_strides, objectness_shape_list):
         """
@@ -617,22 +616,26 @@ class SparseRepPointsHead(AnchorFreeHead):
             在不同scale下进行
 
             Args:
-                objectness_pred (tensor): [description]
-                bbox_pred (tensor): [description]
-                cls_pred (tensor): [description]
-                objecness_gt (tensor): [description]
-                bbox_gt (tensor): [description]
-                bbox_weights (tensor): [description]
-                cls_gt (tensor): [description]
-                cls_weights (tensor): [description]
+                objectness_pred (tensor): shape = [num_imgs, 1, H, W]
+                bbox_pred (tensor): shape = [num_imgs, topn, 4]
+                cls_pred (tensor): shape = [num_imgs, topn, num_cls]
+                objecness_gt (tensor): shape = [num_imgs, 1, H, W]
+                bbox_gt (tensor): shape = [num_imgs, topn, 4]
+                bbox_weights (tensor): [num_imgs, topn, 4]
+                cls_gt (tensor): shape = [num_imgs, topn]
+                cls_weights (tensor): shape = [num_imgs, topn]
                 num_total_samples (int): [description]
 
             Returns:
                 loss_obj, loss_bbox, loss_cls
         """
-
-        loss_obj = self.loss_obj(objectness_pred,objecness_gt)
+        objectness_pred = torch.reshape(objectness_pred, (-1, 1))
+        objecness_gt = torch.reshape(objecness_gt, (-1, 1))
+        loss_obj = self.loss_obj(objectness_pred, objecness_gt)
         
+        bbox_pred = torch.reshape(bbox_pred, (-1, 4))
+        bbox_gt = torch.reshape(bbox_gt, (-1, 4))
+        bbox_weights = torch.reshape(bbox_weights, (-1, 4))
         loss_bbox = self.loss_bbox(bbox_pred,
                                    bbox_gt,
                                    bbox_weights,
