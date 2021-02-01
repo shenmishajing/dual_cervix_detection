@@ -189,8 +189,8 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_grid_coord = torch.stack([topn_idx[..., -2] / w, topn_idx[..., -1] % w], axis=1)
         # - topn_offset shape = [B, 2 * num_points, topn]
         topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
-        topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
-        topn_points = topn_points / w
+        topn_points = topn_offset + 2 * topn_grid_coord.repeat((1, self.num_points, 1)) / w - 1
+        # topn_points = topn_points / w
          
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
@@ -338,12 +338,38 @@ class SparseRepPointsHead(AnchorFreeHead):
         # pos_weight = self.train_cfg.pos_weight
         pos_weight = self.train_cfg["pos_weight"]
 
-        assign_result = self.assigner.assign(bbox_pred, 
-                                             cls_pred, 
-                                             gt_bboxes, 
-                                             gt_labels, 
-                                             img_meta, 
-                                             gt_bboxes_ignore=gt_bboxes_ignore)
+        if self.train_cfg["assigner"]["type"] == "HungarianAssigner":
+            #! bbox_pred (cx, cy, w, h) [0,1] normalized
+            #! gt_boxxes (x1, y1, x2, y2) unormalized
+            assign_result = self.assigner.assign(bbox_pred, 
+                                                cls_pred, 
+                                                gt_bboxes, 
+                                                gt_labels, 
+                                                img_meta, 
+                                                gt_bboxes_ignore=gt_bboxes_ignore)
+        elif self.train_cfg["assigner"]["type"] == "MaxIoUAssigner":
+            #! 需要坐标是(x1,y1,x2,y2)格式的，数值范围统一到[0,1]
+          
+            #! bbox_pred (cx, cy, w, h) -> (x1, y1, x2, y2)
+            half_wh_bbox_pred = bbox_pred[..., 2:4]
+            bbox_pred = torch.cat([
+                bbox_pred[..., :2] - half_wh_bbox_pred,
+                bbox_pred[..., :2] + half_wh_bbox_pred
+            ], dim=-1)
+
+            # #! gt_bboxes [0, img_H/img_w] -> [0, 1]
+            img_h, img_w, _ = img_meta["img_shape"]
+            factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4)).cuda()
+            gt_bboxes = gt_bboxes / factor
+            # print("bbox_pred", bbox_pred.min(), bbox_pred.max())
+            # print("gt_bboxes", gt_bboxes.min(), gt_bboxes.max())
+            assign_result = self.assigner.assign(bbox_pred, 
+                                                gt_bboxes, 
+                                                gt_bboxes_ignore=gt_bboxes_ignore,
+                                                gt_labels=gt_labels)
+        else:
+            raise self.train_cfg["assigner"]["type"] + "is not in (HungarianAssigner, MaxIoUAssigner)"
+
         sampling_result = self.sampler.sample(assign_result, bbox_pred, gt_bboxes)
         
         num_valid_bbox_pred = bbox_pred.shape[0]
@@ -381,14 +407,15 @@ class SparseRepPointsHead(AnchorFreeHead):
             pos_bbox_pred = unmap(pos_bbox_pred, num_total_bbox_pred, inside_flags)
             bbox_pred_weights = unmap(bbox_pred_weights, num_total_bbox_pred, inside_flags)
         
-        #! gt box [x1, y1, x2, y2] -> [cx, cy, w, h]
-        bbox_gt = torch.cat([
-            (bbox_gt[..., :2] + bbox_gt[..., 2:4]) / 2.,
-            bbox_gt[..., 2:4] - bbox_gt[..., :2]
-        ], dim=-1)
-        img_h, img_w, _ = img_meta["img_shape"]
-        factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4)).cuda()
-        bbox_gt /= factor
+        if self.train_cfg["assigner"] == "HungarianAssigner":
+            #! gt box [x1, y1, x2, y2] -> [cx, cy, w, h]
+            bbox_gt = torch.cat([
+                (bbox_gt[..., :2] + bbox_gt[..., 2:4]) / 2.,
+                bbox_gt[..., 2:4] - bbox_gt[..., :2]
+            ], dim=-1)
+            img_h, img_w, _ = img_meta["img_shape"]
+            factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4)).cuda()
+            bbox_gt /= factor
 
         return (labels, label_weights, 
                 bbox_gt, 
@@ -636,6 +663,9 @@ class SparseRepPointsHead(AnchorFreeHead):
         objecness_gt = torch.reshape(objecness_gt, (-1, 1))
         loss_obj = self.loss_obj(objectness_pred, objecness_gt)
         
+        # print("loss bbox_pred", bbox_pred.min(), bbox_pred.max())
+        # print("loss bbox_gt", bbox_gt.min(), bbox_gt.max())
+
         bbox_pred = torch.reshape(bbox_pred, (-1, 4))
         bbox_gt = torch.reshape(bbox_gt, (-1, 4))
         bbox_weights = torch.reshape(bbox_weights, (-1, 4))
