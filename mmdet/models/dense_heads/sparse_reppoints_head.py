@@ -165,15 +165,15 @@ class SparseRepPointsHead(AnchorFreeHead):
 
     def forward_single(self, x):
         # - Forward feature map of a single FPN level.
-        # - dcn_base_offset.shape = [1, 18, 1] 18: (-1, -1), (-1, 0)...
-        dcn_base_offset = self.dcn_base_offset.type_as(x)
+        # - dcn_base_offset.shape = [1, 18, 1, 1] 18: (-1, -1), (-1, 0)...
+        dcn_base_offset = self.dcn_base_offset.type_as(x).unsqueeze(dim=2)
         feat = x 
         for conv in self.convs:
             feat = conv(feat)
         
         offset = self.offset_out(
             self.relu(self.offset_conv(feat)))
-        offset = offset + dcn_base_offset.unsqueeze(dim=2)
+        offset = offset + dcn_base_offset
 
         if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
             objectness_logits = self.objectness_out(self.objectness_conv(feat))
@@ -190,8 +190,8 @@ class SparseRepPointsHead(AnchorFreeHead):
         # - topn_offset shape = [B, 2 * num_points, topn]
         topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
-        topn_points = topn_points / w 
-
+        topn_points = topn_points / w
+         
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((topn_feat.shape[0] , self.num_points * self.point_feat_channels, -1))
@@ -381,9 +381,9 @@ class SparseRepPointsHead(AnchorFreeHead):
             pos_bbox_pred = unmap(pos_bbox_pred, num_total_bbox_pred, inside_flags)
             bbox_pred_weights = unmap(bbox_pred_weights, num_total_bbox_pred, inside_flags)
         
-        #! gt box [x1,y1,x2,y2] -> [cx,cy,w,h]
+        #! gt box [x1, y1, x2, y2] -> [cx, cy, w, h]
         bbox_gt = torch.cat([
-            (bbox_gt[..., :2] + bbox_gt[..., 2:4]) / 2,
+            (bbox_gt[..., :2] + bbox_gt[..., 2:4]) / 2.,
             bbox_gt[..., 2:4] - bbox_gt[..., :2]
         ], dim=-1)
         img_h, img_w, _ = img_meta["img_shape"]
@@ -530,11 +530,13 @@ class SparseRepPointsHead(AnchorFreeHead):
                     level1_obj_tensor: [num_imgs, 1, H, W]
                 bbox_pred (list[tensor]): [level1_bbox_tensor, level2_bbox_tensor, ...]
                     level1_bbox_tensor: [num_imgs, topn, 4]
+                    坐标是(cx, cy, x, y), 且数值是[0,1]
                 cls_pred (list[tensor]): [level1_cls_tensor, level2_cls_tensor, ...]
                     level1_cls_tensor: [num_imgs, topn, num_cls]
                 topn_idx (list[tensor]): [level1_idx_tensor, level2_idx_tensor, ...]
                     level1_idx_tensor: [num_imgs, topn, 1]
                 gt_bboxes (list[tensor]): [img1_gt_bbox_tensor, img2_gt_bbox_tensor, ...]
+                    坐标是(x1,y1,x2,y2)，图像中的坐标，不是feature map中的坐标
                 gt_labels (list[tensor]): [img1_gt_label_tensor, img2_gt_label_tensor, ...]
                 img_metas (list[dict]): [img1_meta, img2_meta, ...]
                 gt_bboxes_ignore ([type], optional): [description]. Defaults to None.
