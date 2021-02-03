@@ -179,7 +179,9 @@ class SparseRepPointsHead(AnchorFreeHead):
         
         offset = self.offset_out(
             self.relu(self.offset_conv(feat)))
-        offset = offset + dcn_base_offset
+        #! dcn_base_offset，如果3*3的网格，中心坐标是(0,0)，中心坐标加上dcn_base_offset可以得到网格其他位置坐标
+        #! 取值是[[-1,-1],[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1],[1,0],[1,1]]
+        # offset = offset + dcn_base_offset
 
         if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
             objectness_logits = self.objectness_out(self.objectness_conv(feat))
@@ -190,15 +192,22 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
         topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
-        w = objectness.shape[-1]
+        h, w = objectness.shape[-2:]
         # - topn_grid_coord shape = [B, 2, topn] 
         topn_grid_coord = torch.stack([topn_idx[..., -2] / w, topn_idx[..., -1] % w], axis=1)
         # - topn_offset shape = [B, 2 * num_points, topn]
         topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
-        topn_points = topn_offset + 2 * topn_grid_coord.repeat((1, self.num_points, 1)) / w - 1
-        # topn_points = topn_points / w
+        #! 将grid坐标由[0, feat_h/feat_w] 变成 [-1, 1]
+        topn_grid_coord = torch.cat([
+            topn_grid_coord[:, 0:1] / h,
+            topn_grid_coord[:, 1:2] / w
+        ], dim=1)
+        topn_grid_coord =  2.0 * topn_grid_coord - 1.0
+        topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
          
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
+        #! 要求给出索引范围必须（需要标准化）是[-1，1]，
+        print("topn_points", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((topn_feat.shape[0] , self.num_points * self.point_feat_channels, -1))
 
