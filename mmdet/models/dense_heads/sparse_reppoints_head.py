@@ -362,18 +362,9 @@ class SparseRepPointsHead(AnchorFreeHead):
         pos_weight = self.train_cfg["pos_weight"]
 
         if self.train_cfg["assigner"]["type"] == "HungarianAssigner":
-            #! 将forward中bbox_pred理解为 (x1, y1, x2, y2), 并需要通过feature map 的shape进行归一化
+            #! 将forward中bbox_pred理解为 (cx,cy,w,h), 取值为[0,1],但是是不是在[0,1]不能保证
             #! bbox_pred (cx, cy, w, h) [0,1] normalized
             #! gt_boxxes (x1, y1, x2, y2) unormalized
-            h, w = img_meta["batch_input_shape"]
-            factor = [[int((h + s - 1 ) / s), int((w + s - 1) / s)] * 2 for s in self.output_strides]
-            topn = cat_bbox_pred.size(0) // len(self.output_strides)
-            factor = torch.tensor(factor, dtype=torch.float).repeat_interleave(topn, dim=0).cuda()
-            bbox_pred = bbox_pred / factor
-            bbox_pred = torch.cat([
-                (bbox_pred[..., 2:4] + bbox_pred[..., :2]) / 2,
-                bbox_pred[..., 2:4] - bbox_pred[..., :2]
-            ],dim=-1)
             assign_result = self.assigner.assign(bbox_pred, 
                                                 cls_pred, 
                                                 gt_bboxes, 
@@ -382,12 +373,17 @@ class SparseRepPointsHead(AnchorFreeHead):
                                                 gt_bboxes_ignore=gt_bboxes_ignore)
         elif self.train_cfg["assigner"]["type"] == "MaxIoUAssigner":
             #! 需要坐标是(x1, y1, x2, y2)格式的
-            #! 将forward中bbox_pred理解为 (x1, y1, x2, y2) 
-            #! bbox_pred (x1, y1, x2, y2) 得到的最终坐标需要乘上output_strides
-            topn = cat_bbox_pred.size(0) // len(self.output_strides)
-            scale = torch.tensor(self.output_strides).repeat_interleave(topn, dim=0).reshape((-1, 1)).cuda()
-            cat_bbox_pred = cat_bbox_pred * scale
+            #! 将forward中bbox_pred(cx,cy,w,h)转化为(x1,y1,x2,y2) 
+            #! bbox_pred (x1, y1, x2, y2) 需要归一化
+            half_wh_bbox_pred = bbox_pred[..., 2:4] / 2
+            bbox_pred = torch.cat([
+                bbox_pred[..., :2] - half_wh_bbox_pred,
+                bbox_pred[..., :2] + half_wh_bbox_pred
+            ], dim=-1)
 
+            img_h, img_w, _ = img_meta["img_shape"]
+            factor = torch.tensor([img_w, img_h, img_w, img_h]).reshape((1,4)).cuda()
+            gt_bboxes /= factor
             assign_result = self.assigner.assign(bbox_pred, 
                                                 gt_bboxes, 
                                                 gt_bboxes_ignore=gt_bboxes_ignore,
@@ -433,7 +429,8 @@ class SparseRepPointsHead(AnchorFreeHead):
             bbox_pred_weights = unmap(bbox_pred_weights, num_total_bbox_pred, inside_flags)
         
         if self.train_cfg["assigner"] == "HungarianAssigner":
-            #! 最终计算损失的时候需要bbox_pred是(x1,y1,x2,y2)
+            #! 最终计算损失的时候需要bbox_pred是(x1,y1,x2,y2),
+            #! 而在上面的HungarianAssigner中bbox_pred还是(cx,cy,w,h),并且gt还需要归一化
             #! (cx, cy, w, h) -> (x1,y1,x2,y2)
             half_wh_bbox_pred = bbox_pred[..., 2:4] / 2
             bbox_pred = torch.cat([
