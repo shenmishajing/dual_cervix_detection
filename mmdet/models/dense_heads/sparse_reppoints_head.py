@@ -214,8 +214,8 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
          
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
-        #! 要求给出索引范围必须（需要标准化）是[-1，1]，
-        # print("topn_points", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
+        #! 要求给出索引范围必须（需要标准化）是[-1，1]
+        # print("topn_points_transposed",topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((topn_feat.shape[0] , self.num_points * self.point_feat_channels, -1))
 
@@ -795,4 +795,8 @@ class SparseRepPointsHead(AnchorFreeHead):
                                                  cfg.max_per_img)  
             return det_bboxes, det_labels
         else:
-            return bbox_pred, cls_pred
+            cls_score, cls_pred_idx = cls_pred.max(axis=-1)
+            bbox_pred = torch.cat([bbox_pred, cls_score.unsqueeze(-1)], dim=-1)
+            # print(bbox_pred)
+            # print(cls_pred_idx)
+            return bbox_pred, cls_pred_idx

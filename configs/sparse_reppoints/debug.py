@@ -28,11 +28,11 @@ model = dict(
         feat_channels=256,
         point_feat_channels=256,
         num_points=9,
-        top_k=40,
+        top_k=20,
         stacked_linears=3,
         output_strides=[8, 16, 32, 64, 128],
         loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
-        loss_bbox=dict(type='GIoULoss'),
+        loss_bbox=dict(type='SmoothL1Loss'),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
@@ -44,11 +44,17 @@ model = dict(
 
 # training and testing settings
 train_cfg = dict(
-    assigner = dict(
-        type='HungarianAssigner',
-        cls_cost=dict(type='ClassificationCost', weight=1.),
-        reg_cost=dict(type='BBoxL1Cost', weight=1.0),
-        iou_cost=dict(type='IoUCost', iou_mode='giou', weight=1.0)),
+    # assigner = dict(
+    #     type='HungarianAssigner',
+    #     cls_cost=dict(type='ClassificationCost', weight=1.),
+    #     reg_cost=dict(type='BBoxL1Cost', weight=1.0),
+    #     iou_cost=dict(type='IoUCost', iou_mode='giou', weight=1.0)),
+    assigner=dict(
+            type='MaxIoUAssigner',
+            pos_iou_thr=0.5,
+            neg_iou_thr=0.4,
+            min_pos_iou=0,
+            ignore_iof_thr=-1),
     allowed_border=-1,     
     pos_weight=-1,
 )
@@ -60,4 +66,11 @@ test_cfg = dict(
     max_per_img=100
 )
 
-optimizer = dict(lr=0.01)
+optimizer = dict(type='SGD', lr=0.000001, momentum=0.9, weight_decay=0.0001)
+
+log_config = dict(
+    interval=50,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
