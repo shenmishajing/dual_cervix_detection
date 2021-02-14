@@ -20,7 +20,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                  point_feat_channels=256,
                  num_points=9,
                  top_k=10,
-                 stacked_linears=3,
+                 stacked_encode=4,
                  output_strides=[8, 16, 32, 64, 128],
                  loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
                  loss_bbox=dict(type='GIoULoss'),
@@ -39,7 +39,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                         ignore_iof_thr=-1)),
                  **kwargs):
 
-        self.stacked_linears = stacked_linears
+        self.stacked_encode = stacked_encode
         self.num_points = num_points
         self.point_feat_channels = point_feat_channels
         self.top_k = top_k
@@ -106,7 +106,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                                      1, 1, 0).cuda()
 
         self.objectness_conv = nn.Conv2d(self.feat_channels,
-                                         self.feat_channels,
+                                         self.point_feat_channels,
                                          3, 1, 1).cuda()
         self.objectness_out = nn.Conv2d(self.point_feat_channels,
                                         1,
@@ -114,7 +114,8 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.objectness_sigmoid_out = nn.Sigmoid().cuda()
 
         self.encode_points_convs = nn.ModuleList()
-        for i in range(self.stacked_convs):
+        for i in range(self.stacked_encode):
+            #! 9 个点的话，如果用3的1维卷积核，那么需要4个卷积层才能覆盖9个点
             chn = pts_out_dim if i == 0 else self.point_feat_channels
             self.encode_points_convs.append(
                 nn.Conv1d(chn,
@@ -175,6 +176,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         h, w = x.shape[-2: ]
         dcn_base_offset = self.dcn_base_offset.type_as(x).unsqueeze(dim=2)
         dcn_base_offset = dcn_base_offset.reshape((-1, 2))
+        #! reppoints 中预测的偏移量不是归一化的，但是grid_sample中要求坐标为[-1,1]，这里要进行归一化
         dcn_base_offset = torch.cat([
             dcn_base_offset[:, 0:1] / h,
             dcn_base_offset[:, 1:2] / w
@@ -191,6 +193,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         #! 取值是[[-1,-1],[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1],[1,0],[1,1]]
         offset = offset + dcn_base_offset
 
+        # objectness
         if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
             objectness_logits = self.objectness_out(self.objectness_conv(feat))
             objectness = self.objectness_sigmoid_out(objectness_logits)
@@ -200,20 +203,17 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
         topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
-        h, w = objectness.shape[-2:]
         # - topn_grid_coord shape = [B, 2, topn] 
-        topn_grid_coord = torch.stack([topn_idx[..., -2] / w, topn_idx[..., -1] % w], axis=1)
+        topn_grid_coord = torch.cat([topn_idx // w, topn_idx % w], axis=1)
+        #! 将grid坐标由[0, feat_h/feat_w] 变成 [-1, 1]
+        topn_grid_coord = torch.cat([topn_grid_coord[:, 0:1] / h,
+                                     topn_grid_coord[:, 1:2] / w], dim=1)
+        topn_grid_coord =  2.0 * topn_grid_coord - 1.0
         # - topn_offset shape = [B, 2 * num_points, topn]
         topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
-        #! 将grid坐标由[0, feat_h/feat_w] 变成 [-1, 1]
-        topn_grid_coord = torch.cat([
-            topn_grid_coord[:, 0:1] / h,
-            topn_grid_coord[:, 1:2] / w
-        ], dim=1)
-        topn_grid_coord =  2.0 * topn_grid_coord - 1.0
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
-         
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
+        
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
         # print("topn_points_transposed",topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
@@ -231,8 +231,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         # topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
         
-        # - [B, 1, H, W] -> [B, H, W]
-        # objectness_logits = torch.squeeze(objectness_logits)
         # - [B, 4, topn] -> [B, topn ,4]
         topn_box = torch.transpose(topn_box, -2, -1)
         topn_cls = torch.transpose(topn_cls, -2, -1)
