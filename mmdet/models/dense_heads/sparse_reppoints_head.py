@@ -352,7 +352,9 @@ class SparseRepPointsHead(AnchorFreeHead):
             return (None, ) * 7
         
         bbox_pred = cat_bbox_pred[inside_flags, :]
-        cls_pred = cat_cls_pred[inside_flags, :]
+        #如果assigner为HungarianAssigner，则需要类别信息
+        if self.train_cfg["assigner"]["type"] == "HungarianAssigner":
+            cls_pred = cat_cls_pred[inside_flags, :]
 
         # TODO 改掉下面的取参数的用法
         # pos_weight = self.train_cfg.pos_weight
@@ -394,7 +396,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         bbox_gt = bbox_pred.new_zeros([num_valid_bbox_pred, 4])
         pos_bbox_pred = torch.zeros_like(bbox_pred)
         bbox_pred_weights = bbox_pred.new_zeros([num_valid_bbox_pred, 4])
-        labels = bbox_pred.new_full((num_valid_bbox_pred, ), self.cls_out_channels, dtype=torch.long) 
+        labels = bbox_pred.new_full((num_valid_bbox_pred, ), self.num_classes, dtype=torch.long) 
         label_weights = bbox_pred.new_zeros(num_valid_bbox_pred, dtype=torch.float)
 
         pos_inds = sampling_result.pos_inds 
@@ -696,7 +698,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         cls_pred = cls_pred.reshape((-1, self.cls_out_channels))
         cls_gt = cls_gt.reshape((-1,))
         cls_weights = cls_weights.reshape((-1,))
-        #TODO gt box [x1,y1,x2,y2]-> [cx, cy, w, h], box_pred
         loss_cls = self.loss_cls(cls_pred,
                                  cls_gt,
                                  cls_weights,
@@ -707,19 +708,19 @@ class SparseRepPointsHead(AnchorFreeHead):
     def get_bboxes(self, bbox_pred, cls_pred, img_metas, cfg=None, rescale=False, with_nms=False):
         """
 
-        Args:
-            bbox_pred (list[tensor]): [level1_bbox_pred, level2_bbox_pred, ...], 
-                level1_bbox_pred shape = [num_imgs, topn, 4]
-                4: [cx, cy, w, h]
-            cls_pred (list[tensor]): [level1_cls_pred, level2_cls_pred, ...]
-                level1_bbox_pred shape = [num_imgs, topn, num_cls]
-            img_metas (list[dict]): [img1_meta, img2_meta, ...]
-            cfg ([type], optional): [description]. Defaults to None.
-            rescale (bool, optional): [description]. Defaults to False.
-            with_nms (bool, optional): [description]. Defaults to False.
+            Args:
+                bbox_pred (list[tensor]): [level1_bbox_pred, level2_bbox_pred, ...], 
+                    level1_bbox_pred shape = [num_imgs, topn, 4]
+                    4: [cx, cy, w, h]
+                cls_pred (list[tensor]): [level1_cls_pred, level2_cls_pred, ...]
+                    level1_bbox_pred shape = [num_imgs, topn, num_cls]
+                img_metas (list[dict]): [img1_meta, img2_meta, ...]
+                cfg ([type], optional): [description]. Defaults to None.
+                rescale (bool, optional): [description]. Defaults to False.
+                with_nms (bool, optional): [description]. Defaults to False.
 
-        Returns:
-            result_list: 
+            Returns:
+                result_list: 
         """
         device = bbox_pred[0].device
         num_imgs = len(img_metas)
@@ -727,7 +728,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         bbox_pred = torch.cat(bbox_pred, dim=1)
         cls_pred = torch.cat(cls_pred, dim=1)
         half_wh = bbox_pred[..., 2:] / 2
-        
         bbox_pred = torch.cat([
             bbox_pred[..., :2] - half_wh,
             bbox_pred[..., :2] + half_wh
@@ -750,17 +750,17 @@ class SparseRepPointsHead(AnchorFreeHead):
     def _get_bboxes_single(self, bbox_pred, cls_pred, img_meta, cfg, rescale=False, with_nms=False):
         """
 
-        Args:
-            bbox_pred (tensor): shape = [num_level * topn, 4] 
-                4: [x_min, ymin, xmax, ymax]
-            cls_pred (tensor): shape = [num_level * topn, num_cls] 
-            img_meta (dict): 
-            cfg ([type]): [description]
-            rescale (bool, optional): [description]. Defaults to False.
-            with_nms (bool, optional): [description]. Defaults to False.
-        
-        Returns: 
-            det_bboxes, det_labels
+            Args:
+                bbox_pred (tensor): shape = [num_level * topn, 4] 
+                    4: [x_min, ymin, xmax, ymax]
+                cls_pred (tensor): shape = [num_level * topn, num_cls] 
+                img_meta (dict): 
+                cfg ([type]): [description]
+                rescale (bool, optional): [description]. Defaults to False.
+                with_nms (bool, optional): [description]. Defaults to False.
+            
+            Returns: 
+                det_bboxes, det_labels
         """
         cfg = self.test_cfg if cfg is None else cfg
         assert len(bbox_pred) == len(cls_pred)
@@ -769,9 +769,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         y1 = bbox_pred[:, 1].clamp(min=0, max=img_shape[0])
         x2 = bbox_pred[:, 2].clamp(min=0, max=img_shape[1])
         y2 = bbox_pred[:, 3].clamp(min=0, max=img_shape[0])
-        bbox_pred = torch.stack([
-            x1,y1,x2,y2
-        ],dim=-1)
+        bbox_pred = torch.stack([x1, y1, x2, y2],dim=-1)
         
         scale_factor = img_meta["scale_factor"]
         if rescale:
