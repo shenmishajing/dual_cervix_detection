@@ -173,14 +173,13 @@ class SparseRepPointsHead(AnchorFreeHead):
     def forward_single(self, x):
         # - Forward feature map of a single FPN level.
         # - dcn_base_offset.shape = [1, 18, 1, 1] 18: (-1, -1), (-1, 0)...
-        h, w = x.shape[-2: ]
+        batch_size = x.shape[0]
+        feat_h, feat_w = x.shape[-2:]
+        #! reppoints 中预测的偏移量以及base_offset不是归一化的，但是grid_sample中要求坐标为[-1,1]，这里要进行归一化
         dcn_base_offset = self.dcn_base_offset.type_as(x).unsqueeze(dim=2)
         dcn_base_offset = dcn_base_offset.reshape((-1, 2))
-        #! reppoints 中预测的偏移量不是归一化的，但是grid_sample中要求坐标为[-1,1]，这里要进行归一化
-        dcn_base_offset = torch.cat([
-            dcn_base_offset[:, 0:1] / h,
-            dcn_base_offset[:, 1:2] / w
-        ], dim=-1)
+        dcn_base_offset = torch.cat([dcn_base_offset[:, 0:1] / feat_h,
+                                     dcn_base_offset[:, 1:2] / feat_w], dim=-1)
         dcn_base_offset = dcn_base_offset.reshape((1, -1, 1, 1))
 
         feat = x 
@@ -202,22 +201,23 @@ class SparseRepPointsHead(AnchorFreeHead):
                 self.objectness_out(self.objectness_conv(feat)))
 
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
-        topn_objectness, topn_idx = torch.topk(objectness.view((objectness.shape[0], 1, -1)), self.top_k, dim=-1)
-        # - topn_grid_coord shape = [B, 2, topn] 
-        topn_grid_coord = torch.cat([topn_idx // w, topn_idx % w], axis=1)
+        topn_objectness, topn_idx = torch.topk(objectness.view((batch_size, 1, feat_h * feat_w)), self.top_k, dim=-1)
+        # - topn_grid_coord shape = [B, 2, topn] topn_idx中的索引为[0, H * W - 1],这里转化为二维索引
+        topn_grid_coord = torch.cat([topn_idx // feat_w, topn_idx % feat_w], dim=1)
         #! 将grid坐标由[0, feat_h/feat_w] 变成 [-1, 1]
-        topn_grid_coord = torch.cat([topn_grid_coord[:, 0:1] / h,
-                                     topn_grid_coord[:, 1:2] / w], dim=1)
+        topn_grid_coord = torch.cat([topn_grid_coord[:, 0:1] / feat_h,
+                                     topn_grid_coord[:, 1:2] / feat_w], dim=1)
         topn_grid_coord =  2.0 * topn_grid_coord - 1.0
+
         # - topn_offset shape = [B, 2 * num_points, topn]
-        topn_offset = torch.gather(offset.view((offset.shape[0], 2 * self.num_points, -1)), -1, topn_idx)
+        topn_offset = torch.gather(offset.view((batch_size, 2 * self.num_points, -1)), -1, topn_idx)
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
-        # print("topn_points_transposed",topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
+        print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
-        topn_feat = topn_feat.view((topn_feat.shape[0] , self.num_points * self.point_feat_channels, -1))
+        topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1))
 
         topn_points_encoded = topn_points
         for conv in self.encode_points_convs:
@@ -228,7 +228,7 @@ class SparseRepPointsHead(AnchorFreeHead):
             topn_feat_concat = conv(topn_feat_concat)
         
         topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
-        # topn_box = self.reg_sigmoid_out(topn_box)
+        topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
         
         # - [B, 4, topn] -> [B, topn ,4]
@@ -275,23 +275,22 @@ class SparseRepPointsHead(AnchorFreeHead):
         if len(gt_bboxes) > 0:
             objectness_list = []
             for s, (h, w) in zip(output_strides, objectness_shape_list):
-                    xy = torch.stack([
-                        (torch.arange(h, dtype=torch.float, device=device) * s + int(s / 2))[:, None].expand(-1, w),
-                        (torch.arange(w, dtype=torch.float, device=device) * s + int(s / 2))[None, :].expand(h, -1)
-                        ], dim=-1)
-                    l = xy[..., 1] - gt_bboxes[:, None, None, 0]
-                    r = gt_bboxes[:, None, None, 2] - xy[..., 1]
-                    t = xy[..., 0] - gt_bboxes[:, None, None, 1]
-                    b = gt_bboxes[:, None, None, 3] - xy[..., 0]
-                    in_box = (l > 0) & (r > 0) & (t > 0) & (b > 0)
-                    objectness = torch.zeros((gt_bboxes.shape[0], h, w), dtype=torch.float, device=device)
-                    objectness[in_box] = torch.sqrt(torch.min(l,r)  * torch.min(t,b) / (torch.max(l,r) * torch.max(t,b)))[in_box]
-                    objectness, _ = torch.max(objectness, dim=0)
-                    objectness_list.append(objectness[None, :])
+                xy = torch.stack([
+                    (torch.arange(h, dtype=torch.float, device=device) * s + int(s / 2))[:, None].expand(-1, w),
+                    (torch.arange(w, dtype=torch.float, device=device) * s + int(s / 2))[None, :].expand(h, -1)
+                    ], dim=-1)
+                l = xy[..., 1] - gt_bboxes[:, None, None, 0]
+                r = gt_bboxes[:, None, None, 2] - xy[..., 1]
+                t = xy[..., 0] - gt_bboxes[:, None, None, 1]
+                b = gt_bboxes[:, None, None, 3] - xy[..., 0]
+                in_box = (l > 0) & (r > 0) & (t > 0) & (b > 0)
+                objectness = torch.zeros((gt_bboxes.shape[0], h, w), dtype=torch.float, device=device)
+                objectness[in_box] = torch.sqrt(torch.min(l,r)  * torch.min(t,b) / (torch.max(l,r) * torch.max(t,b)))[in_box]
+                objectness, _ = torch.max(objectness, dim=0)
+                objectness_list.append(objectness[None, :])
         else:
-            objectness_list = [torch.zeros((1, h, w), dtype=torch.float, device=device) for (h,w) in objectness_shape_list]
-        
-        # print("objectness_single", [obj.shape for obj in objectness_list])
+            objectness_list = [torch.zeros((1, h, w), dtype=torch.float, device=device) for (h, w) in objectness_shape_list]
+
         return objectness_list
 
     def _get_objectness(self, gt_bboxes_list, img_metas, output_strides, objectness_shape_list):
@@ -307,11 +306,11 @@ class SparseRepPointsHead(AnchorFreeHead):
         """
         
         batch_size = len(gt_bboxes_list)
-        objectness_list =  multi_apply(self._get_objectness_single,
-                                       gt_bboxes_list,
-                                       img_metas,
-                                       output_strides=output_strides,
-                                       objectness_shape_list=objectness_shape_list)
+        objectness_list = multi_apply(self._get_objectness_single,
+                                      gt_bboxes_list,
+                                      img_metas,
+                                      output_strides=output_strides,
+                                      objectness_shape_list=objectness_shape_list)
         objectness_list = [torch.stack(objectness, dim=0) for objectness in objectness_list]
         return objectness_list
 
@@ -330,7 +329,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                 cat_bbox_pred (tensor): shape = (num_level * topn, 4) 
                     !4: (cx, cy, w, h) in range(0, 1)
                 cat_cls_pred (tensor): shape = (num_level * topn, num_cls)
-                valid_flags (tensor): shape = (num_level * topn,)
+                valid_flags (tensor): shape = (num_level * topn, )
                 gt_bboxes (tensor): shape = (num_gt, 4)
                 gt_labels (tensor): shape = (num_gt, label_channels)
                 img_meta (dict): ...
@@ -498,11 +497,11 @@ class SparseRepPointsHead(AnchorFreeHead):
         num_levels = len(self.output_strides)
         num_imgs = len(img_metas)
         
-        # - objecness
+        # - objectness
         objectness_shape_list = [obj.shape[-2:] for obj in objectness_pred_list]
         gt_objectness_list = self._get_objectness(gt_bboxes_list, img_metas, self.output_strides, objectness_shape_list)
         # - cls_target, reg_target
-        #- concat all level bbox_pred and flag to a single tensor
+        #- concat all level bbox_pred and flag of a image to a single tensor
         for i in range(num_imgs):
             assert len(bbox_pred_list[i]) == len(valid_flag_list[i])
             bbox_pred_list[i] = torch.cat(bbox_pred_list[i], dim=0)
@@ -585,7 +584,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                 topn_idx (list[tensor]): [level1_idx_tensor, level2_idx_tensor, ...]
                     level1_idx_tensor: [num_imgs, topn, 1]
                 gt_bboxes (list[tensor]): [img1_gt_bbox_tensor, img2_gt_bbox_tensor, ...]
-                    坐标是(x1,y1,x2,y2)，图像中的坐标，不是feature map中的坐标
+                    坐标是(x1, y1, x2, y2)，图像中的坐标，不是feature map中的坐标
                 gt_labels (list[tensor]): [img1_gt_label_tensor, img2_gt_label_tensor, ...]
                 img_metas (list[dict]): [img1_meta, img2_meta, ...]
                 gt_bboxes_ignore ([type], optional): [description]. Defaults to None.
@@ -596,6 +595,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         num_imgs = len(img_metas)
         num_levels = len(objectness_pred)
         device = gt_bboxes[0].device
+        #! 用分类用的sigmoid就是输出通道数就是类别数，如果是softmax就是类别数加1（背景，最后一类）
         label_channels = self.cls_out_channels if self.use_sigmoid_cls else 1
 
         bbox_pred_list = [] 
@@ -685,9 +685,6 @@ class SparseRepPointsHead(AnchorFreeHead):
         objecness_gt = torch.reshape(objecness_gt, (-1, 1))
         loss_obj = self.loss_obj(objectness_pred, objecness_gt)
         
-        # print("loss bbox_pred", bbox_pred.min(), bbox_pred.max())
-        # print("loss bbox_gt", bbox_gt.min(), bbox_gt.max())
-
         bbox_pred = torch.reshape(bbox_pred, (-1, 4))
         bbox_gt = torch.reshape(bbox_gt, (-1, 4))
         bbox_weights = torch.reshape(bbox_weights, (-1, 4))
