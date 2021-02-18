@@ -130,20 +130,29 @@ class SparseRepPointsHead(AnchorFreeHead):
                           concat_feat_channels,
                           3, 1, 1).cuda())
 
-        self.reg_conv = nn.Conv1d(concat_feat_channels,
-                                  concat_feat_channels // 2,
-                                  3, 1, 1).cuda()
-        self.reg_out = nn.Conv1d(concat_feat_channels // 2,
-                                 4,
-                                 1, 1, 0).cuda()
+        # self.reg_conv = nn.Conv1d(concat_feat_channels,
+        #                           concat_feat_channels // 2,
+        #                           3, 1, 1).cuda()
+        # self.reg_out = nn.Conv1d(concat_feat_channels // 2,
+        #                          4,
+        #                          1, 1, 0).cuda()
+        # self.reg_sigmoid_out = nn.Sigmoid().cuda()
+
+        # self.cls_conv = nn.Conv1d(concat_feat_channels,
+        #                           concat_feat_channels // 2,
+        #                           3, 1, 1).cuda()
+        # self.cls_out = nn.Conv1d(concat_feat_channels // 2,
+        #                          self.cls_out_channels,
+        #                          1, 1, 0).cuda()
+        
+        # transposed [B, (k*k+1)*C, topn] -> [B, topn, (k*k+1) *C]
+        self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
+        self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
         self.reg_sigmoid_out = nn.Sigmoid().cuda()
 
-        self.cls_conv = nn.Conv1d(concat_feat_channels,
-                                  concat_feat_channels // 2,
-                                  3, 1, 1).cuda()
-        self.cls_out = nn.Conv1d(concat_feat_channels // 2,
-                                 self.cls_out_channels,
-                                 1, 1, 0).cuda()
+        self.cls_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
+        self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels).cuda()
+
 
     def init_weights(self):
         for m in self.convs:
@@ -161,10 +170,16 @@ class SparseRepPointsHead(AnchorFreeHead):
         for m in self.concat_feat_convs:
             normal_init(m, std=0.01)
         
-        normal_init(self.reg_conv, std=0.01)
+        # normal_init(self.reg_conv, std=0.01)
+        # normal_init(self.reg_out, std=0.01)
+
+        # normal_init(self.cls_conv, std=0.01)
+        # normal_init(self.cls_out, std=0.01)
+
+        normal_init(self.reg_linear, std=0.01)
         normal_init(self.reg_out, std=0.01)
 
-        normal_init(self.cls_conv, std=0.01)
+        normal_init(self.cls_linear, std=0.01)
         normal_init(self.cls_out, std=0.01)
 
     def forward(self, feats):
@@ -227,13 +242,19 @@ class SparseRepPointsHead(AnchorFreeHead):
         for conv in self.concat_feat_convs:
             topn_feat_concat = conv(topn_feat_concat)
         
-        topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
-        topn_box = self.reg_sigmoid_out(topn_box)
-        topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
+        # topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
+        # topn_box = self.reg_sigmoid_out(topn_box)
+        # topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
         
         # - [B, 4, topn] -> [B, topn ,4]
-        topn_box = torch.transpose(topn_box, -2, -1)
-        topn_cls = torch.transpose(topn_cls, -2, -1)
+        # topn_box = torch.transpose(topn_box, -2, -1)
+        # topn_cls = torch.transpose(topn_cls, -2, -1)
+        # topn_idx = torch.transpose(topn_idx, -2, -1)
+
+        topn_feat_concat = torch.transpose(topn_feat_concat, -2, -1)
+        topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
+        topn_box = self.reg_sigmoid_out(topn_box)
+        topn_cls = self.cls_out(self.cls_linear(topn_feat_concat))
         topn_idx = torch.transpose(topn_idx, -2, -1)
 
         if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
