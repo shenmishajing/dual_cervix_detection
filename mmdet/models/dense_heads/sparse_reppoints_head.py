@@ -22,8 +22,8 @@ class RefineHead(object):
                  point_feat_channels=256,
                  num_points=9,
                  top_k=10,
-                 stacked_convs=3,
-                 stacked_encode=4,
+                 stacked_linears=2,
+                 stacked_encode=2,
                  output_strides=[8,16,32,64,128],
                  loss_bbox=dict(type='GIoULoss'),
                  loss_cls=dict(
@@ -42,7 +42,7 @@ class RefineHead(object):
         self.dcn_pad = int((self.dcn_kernel - 1) / 2)
 
         self.top_k = top_k 
-        self.stacked_convs = stacked_convs
+        self.stacked_linears = stacked_linears
         self.stacked_encode = stacked_encode
         self.output_strides = output_strides
         
@@ -70,22 +70,17 @@ class RefineHead(object):
                                     1, 1, 0).cuda()
 
         # points encoding
-        self.encode_points_convs = nn.ModuleList()
+        self.encode_points_linears = nn.ModuleList()
         for i in range(self.stacked_encode):
-            #! 9 个点的话，如果用3的1维卷积核，那么需要4个卷积层才能覆盖9个点
             chn = pts_out_dim if i == 0 else self.point_feat_channels
-            self.encode_points_convs.append(
-                nn.Conv1d(chn,
-                          self.point_feat_channels,
-                          3, 1, 1).cuda())
+            self.encode_points_linears.append(
+                nn.Linear(chn, self.point_feat_channels).cuda())
         
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
-        self.concat_feat_convs = nn.ModuleList()
-        for i in range(self.stacked_convs):
-            self.concat_feat_convs.append(
-                nn.Conv1d(concat_feat_channels,
-                          concat_feat_channels,
-                          3, 1, 1).cuda())
+        self.concat_feat_linears = nn.ModuleList()
+        for i in range(self.stacked_linears):
+            self.concat_feat_linears.append(
+                nn.Linear(concat_feat_channels, concat_feat_channels).cuda())
 
         self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
         self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
@@ -101,10 +96,10 @@ class RefineHead(object):
         normal_init(self.offset_conv, std=0.01)
         normal_init(self.offset_out, std=0.01)
 
-        for m in self.encode_points_convs:
+        for m in self.encode_points_linears:
             normal_init(m, std=0.01)
 
-        for m in self.concat_feat_convs:
+        for m in self.concat_feat_linears:
             normal_init(m, std=0.01)
         
         normal_init(self.reg_linear, std=0.01)
@@ -146,31 +141,29 @@ class RefineHead(object):
         # top_feat shape = [B, num_points, topn, c]
         topn_feat = torch.nn.functional.grid_sample(dcn_feat, topn_points_refine_transposed)
         # top_feat shape = [B, num_points * point_feat_channels, topn]
-        topn_feat = topn_feat.view((batch_size, self.num_points * self.point_feat_channels, -1))
+        topn_feat = topn_feat.view((batch_size, self.num_points * self.point_feat_channels, -1)).transpose(-2,-1)
 
         # topn_points_refine_encoded shape = [B, num_points * 2, topn]
-        topn_points_refine_encoded = topn_points_refine
+        topn_points_refine_encoded = torch.transpose(topn_points_refine, -2, -1)
         # topn_points_refine_encoded shape = [B, point_feat_channels, topn]
-        for conv in self.encode_points_convs:
-            topn_points_refine_encoded = conv(topn_points_refine_encoded)
+        for l in self.encode_points_linears:
+            topn_points_refine_encoded = l(topn_points_refine_encoded)
         
         # topn_feat_concat shape = [B, (num_points + 1) * point_feat_channels, topn]
-        topn_feat_concat = torch.cat([topn_feat, topn_points_refine_encoded], axis=-2)
+        topn_feat_concat = torch.cat([topn_feat, topn_points_refine_encoded], axis=-1)
         # topn_feat_concat shape = [B, (num_points + 1) * point_feat_channels, topn]
-        for conv in self.concat_feat_convs:
-            topn_feat_concat = conv(topn_feat_concat)
+        for l in self.concat_feat_linears:
+            topn_feat_concat = l(topn_feat_concat)
 
         # topn_feat_concat shape = [B, topn, (num_points + 1) * point_feat_channels]
-        topn_feat_concat = torch.transpose(topn_feat_concat, -2, -1)
         topn_box_delta = self.reg_out(self.reg_linear(topn_feat_concat))
-        topn_box_refine = self.applay_delta(topn_box_delta, prev_topn_bbox)
-
+        topn_box_refine = self.apply_delta(topn_box_delta, prev_topn_bbox)
         topn_cls_refine = self.cls_out(self.cls_linear(topn_feat_concat))
 
         return topn_box_refine, topn_cls_refine, offset, topn_points_refine   
 
 
-    def applay_delta(self, topn_delta, topn_boxes):
+    def apply_delta(self, topn_delta, topn_boxes):
         """
             Sparse RCNN 中的坐标变换方式
             Args:
@@ -248,7 +241,9 @@ class SparseRepPointsHead(AnchorFreeHead):
                  point_feat_channels=256,
                  num_points=9,
                  top_k=10,
-                 stacked_encode=4,
+                 stacked_convs=3,
+                 stacked_linears=2,
+                 stacked_encode=2,
                  output_strides=[8, 16, 32, 64, 128],
                  loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
                  loss_bbox=dict(type='GIoULoss'),
@@ -265,9 +260,10 @@ class SparseRepPointsHead(AnchorFreeHead):
                         neg_iou_thr=0.4,
                         min_pos_iou=0,
                         ignore_iof_thr=-1)),
-                 refine_times=1,
+                 refine_times=0,
                  **kwargs):
 
+        self.stacked_linears = stacked_linears
         self.stacked_encode = stacked_encode
         self.num_points = num_points
         self.point_feat_channels = point_feat_channels
@@ -316,7 +312,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                                               self.point_feat_channels,
                                               self.num_points, 
                                               self.top_k, 
-                                              self.stacked_convs, 
+                                              self.stacked_linears, 
                                               self.stacked_encode, 
                                               self.output_strides, 
                                               loss_bbox, 
@@ -334,19 +330,14 @@ class SparseRepPointsHead(AnchorFreeHead):
         for i in range(self.stacked_convs):  # - stacked_convs = 3
             chn = self.in_channels if i == 0 else self.feat_channels
             self.convs.append(
-                ConvModule(
-                    chn,
-                    self.feat_channels,
-                    3,
-                    stride=1,
-                    padding=1,
-                    conv_cfg=self.conv_cfg,
-                    norm_cfg=self.norm_cfg).cuda())
+                nn.Conv2d(chn,
+                          self.feat_channels,
+                          3, 1, 1).cuda())
         
         pts_out_dim = 2 * self.num_points
         self.offset_conv = nn.Conv2d(self.feat_channels,
-                                      self.point_feat_channels,
-                                      3, 1, 1).cuda()
+                                     self.point_feat_channels,
+                                     3, 1, 1).cuda()
         self.offset_out = nn.Conv2d(self.point_feat_channels,
                                      pts_out_dim,
                                      1, 1, 0).cuda()
@@ -359,22 +350,18 @@ class SparseRepPointsHead(AnchorFreeHead):
                                         1, 1, 0).cuda()
         self.objectness_sigmoid_out = nn.Sigmoid().cuda()
 
-        self.encode_points_convs = nn.ModuleList()
+        self.encode_points_linears = nn.ModuleList()
         for i in range(self.stacked_encode):
             #! 9 个点的话，如果用3的1维卷积核，那么需要4个卷积层才能覆盖9个点
             chn = pts_out_dim if i == 0 else self.point_feat_channels
-            self.encode_points_convs.append(
-                nn.Conv1d(chn,
-                          self.point_feat_channels,
-                          3, 1, 1).cuda())
+            self.encode_points_linears.append(
+                nn.Linear(chn, self.point_feat_channels).cuda())
 
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
-        self.concat_feat_convs = nn.ModuleList()
-        for i in range(self.stacked_convs):
-            self.concat_feat_convs.append(
-                nn.Conv1d(concat_feat_channels,
-                          concat_feat_channels,
-                          3, 1, 1).cuda())
+        self.concat_feat_linears = nn.ModuleList()
+        for i in range(self.stacked_linears):
+            self.concat_feat_linears.append(
+                nn.Linear(concat_feat_channels, concat_feat_channels).cuda())
 
         # transposed [B, (k*k+1)*C, topn] -> [B, topn, (k*k+1) *C]
         self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
@@ -386,7 +373,7 @@ class SparseRepPointsHead(AnchorFreeHead):
 
     def init_weights(self):
         for m in self.convs:
-            normal_init(m.conv, std=0.01)
+            normal_init(m, std=0.01)
 
         normal_init(self.offset_conv, std=0.01)
         normal_init(self.offset_out, std=0.01)
@@ -394,10 +381,10 @@ class SparseRepPointsHead(AnchorFreeHead):
         normal_init(self.objectness_conv, std=0.01)
         normal_init(self.objectness_out, std=0.01)
 
-        for m in self.encode_points_convs:
+        for m in self.encode_points_linears:
             normal_init(m, std=0.01)
         
-        for m in self.concat_feat_convs:
+        for m in self.concat_feat_linears:
             normal_init(m, std=0.01)
         
         normal_init(self.reg_linear, std=0.01)
@@ -478,17 +465,16 @@ class SparseRepPointsHead(AnchorFreeHead):
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
         # print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
-        topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1))
+        topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1)).transpose(-2, -1)
 
-        topn_points_encoded = topn_points
-        for conv in self.encode_points_convs:
-            topn_points_encoded = conv(topn_points_encoded)
+        topn_points_encoded = torch.transpose(topn_points, -2, -1)
+        for l in self.encode_points_linears:
+            topn_points_encoded = l(topn_points_encoded)
 
-        topn_feat_concat = torch.cat([topn_feat, topn_points_encoded], axis=-2)
-        for conv in self.concat_feat_convs:
-            topn_feat_concat = conv(topn_feat_concat)
+        topn_feat_concat = torch.cat([topn_feat, topn_points_encoded], axis=-1)
+        for l in self.concat_feat_linears:
+            topn_feat_concat = l(topn_feat_concat)
 
-        topn_feat_concat = torch.transpose(topn_feat_concat, -2, -1)
         topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
         topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(self.cls_linear(topn_feat_concat))
@@ -1013,7 +999,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                                  cls_weights,
                                  avg_factor=num_total_samples)
 
-        if self.refine_times > 0:
+        if self.refine_times > 0 and bbox_refine[0] != None and cls_refine[0] != None:
             for i, h in enumerate(self.refineHead_list):
                 tmp_bbox_refine = torch.reshape(bbox_refine[i], (-1, 4))
                 tmp_cls_refine = torch.reshape(cls_refine[i], (-1, self.cls_out_channels))
@@ -1027,6 +1013,59 @@ class SparseRepPointsHead(AnchorFreeHead):
                 loss_cls += loss_cls_refine
 
         return loss_obj, loss_bbox, loss_cls
+
+    def forward_train(self,
+                      x,
+                      img_metas,
+                      gt_bboxes,
+                      gt_labels=None,
+                      gt_bboxes_ignore=None,
+                      proposal_cfg=None,
+                      **kwargs):
+        """
+        Args:
+            x (list[Tensor]): Features from FPN.
+            img_metas (list[dict]): Meta information of each image, e.g.,
+                image size, scaling factor, etc.
+            gt_bboxes (Tensor): Ground truth bboxes of the image,
+                shape (num_gts, 4).
+            gt_labels (Tensor): Ground truth labels of each box,
+                shape (num_gts,).
+            gt_bboxes_ignore (Tensor): Ground truth bboxes to be
+                ignored, shape (num_ignored_gts, 4).
+            proposal_cfg (mmcv.Config): Test / postprocessing configuration,
+                if None, test_cfg would be used
+
+        Returns:
+            tuple:
+                losses: (dict[str, Tensor]): A dictionary of loss components.
+                proposal_list (list[Tensor]): Proposals of each image.
+        """
+        outs = self(x)
+        if self.refine_times == 0:
+            (objectness, topn_box, topn_cls, topn_idx) = outs
+            topn_box_refine_list = [None, None, None, None, None]
+            topn_cls_refine_list = [None, None, None, None, None]
+            outs = (objectness, topn_box, topn_cls, topn_box_refine_list, topn_cls_refine_list, topn_idx)
+        # else:
+        #     (objectness, 
+        #      topn_box, topn_cls,
+        #      topn_box_refine_list, topn_cls_refine_list,
+        #      topn_idx) = outs
+
+
+        if gt_labels is None:
+            loss_inputs = outs + (gt_bboxes, img_metas)
+        else:
+            loss_inputs = outs + (gt_bboxes, gt_labels, img_metas)
+
+        losses = self.loss(*loss_inputs, gt_bboxes_ignore=gt_bboxes_ignore)
+
+        if proposal_cfg is None:
+            return losses
+        else:
+            proposal_list = self.get_bboxes(*outs, img_metas, cfg=proposal_cfg)
+            return losses, proposal_list
 
     def get_bboxes(self, bbox_pred, cls_pred, img_metas, cfg=None, rescale=False, with_nms=False):
         """

@@ -29,7 +29,9 @@ model = dict(
         point_feat_channels=256,
         num_points=9,
         top_k=20,
-        stacked_encode=4,
+        stacked_convs=3,
+        stacked_linears=2,
+        stacked_encode=2,
         output_strides=[8, 16, 32, 64, 128],
         loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
         loss_bbox=dict(type='SmoothL1Loss'),
@@ -39,7 +41,7 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        refine_times=2
+        refine_times=1
     )
 )
 
