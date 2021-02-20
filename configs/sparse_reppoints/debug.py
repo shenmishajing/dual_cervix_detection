@@ -29,7 +29,7 @@ model = dict(
         point_feat_channels=256,
         num_points=9,
         top_k=20,
-        stacked_linears=3,
+        stacked_encode=4,
         output_strides=[8, 16, 32, 64, 128],
         loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
         loss_bbox=dict(type='SmoothL1Loss'),
@@ -39,6 +39,7 @@ model = dict(
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
+        refine_times=2
     )
 )
 
@@ -66,7 +67,7 @@ test_cfg = dict(
     max_per_img=100
 )
 
-optimizer = dict(type='SGD', lr=0.000001, momentum=0.9, weight_decay=0.0001)
+optimizer = dict(type='SGD', lr=0.001, momentum=0.9, weight_decay=0.0001)
 
 log_config = dict(
     interval=50,
