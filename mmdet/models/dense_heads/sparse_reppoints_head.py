@@ -10,6 +10,234 @@ from ..builder import HEADS, build_loss
 from .anchor_free_head import AnchorFreeHead
 
 
+class RefineHead(object):
+    """
+    FPN的不同输出，权重复用
+    不同迭代次数是否权重复用，不知道
+    """
+    def __init__(self,
+                 cls_out_channels,
+                 in_channels=256,
+                 feat_channels=256,
+                 point_feat_channels=256,
+                 num_points=9,
+                 top_k=10,
+                 stacked_convs=3,
+                 stacked_encode=4,
+                 output_strides=[8,16,32,64,128],
+                 loss_bbox=dict(type='GIoULoss'),
+                 loss_cls=dict(
+                    type='FocalLoss',
+                    use_sigmoid=True,
+                    gamma=2.0,
+                    alpha=0.25,
+                    loss_weight=1.0),
+                 ):
+        self.cls_out_channels = cls_out_channels
+        self.in_channels = in_channels
+        self.feat_channels = feat_channels
+        self.point_feat_channels = point_feat_channels
+        self.num_points = num_points
+        self.dcn_kernel = int(np.sqrt(num_points))
+        self.dcn_pad = int((self.dcn_kernel - 1) / 2)
+
+        self.top_k = top_k 
+        self.stacked_convs = stacked_convs
+        self.stacked_encode = stacked_encode
+        self.output_strides = output_strides
+        
+        self.bbox_weights = [1.0, 1.0, 2.0, 2.0]
+
+        self.loss_bbox = build_loss(loss_bbox)
+        self.loss_cls = build_loss(loss_cls)
+
+
+    def init_layers(self):
+        # 可形变卷积
+        self.dcn = DeformConv2d(self.in_channels, 
+                                self.feat_channels,
+                                self.dcn_kernel, 1,
+                                self.dcn_pad).cuda()
+        
+        self.relu = nn.ReLU(inplace=True).cuda()
+        
+        pts_out_dim = 2 * self.num_points
+        self.offset_conv = nn.Conv2d(self.feat_channels,
+                                     self.point_feat_channels,
+                                     3, 1, 1).cuda()
+        self.offset_out = nn.Conv2d(self.point_feat_channels,
+                                    pts_out_dim,
+                                    1, 1, 0).cuda()
+
+        # points encoding
+        self.encode_points_convs = nn.ModuleList()
+        for i in range(self.stacked_encode):
+            #! 9 个点的话，如果用3的1维卷积核，那么需要4个卷积层才能覆盖9个点
+            chn = pts_out_dim if i == 0 else self.point_feat_channels
+            self.encode_points_convs.append(
+                nn.Conv1d(chn,
+                          self.point_feat_channels,
+                          3, 1, 1).cuda())
+        
+        concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
+        self.concat_feat_convs = nn.ModuleList()
+        for i in range(self.stacked_convs):
+            self.concat_feat_convs.append(
+                nn.Conv1d(concat_feat_channels,
+                          concat_feat_channels,
+                          3, 1, 1).cuda())
+
+        self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
+        self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
+        self.reg_sigmoid_out = nn.Sigmoid().cuda()
+
+        self.cls_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
+        self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels).cuda()
+
+
+    def init_weights(self):
+        normal_init(self.dcn, std=0.01)
+
+        normal_init(self.offset_conv, std=0.01)
+        normal_init(self.offset_out, std=0.01)
+
+        for m in self.encode_points_convs:
+            normal_init(m, std=0.01)
+
+        for m in self.concat_feat_convs:
+            normal_init(m, std=0.01)
+        
+        normal_init(self.reg_linear, std=0.01)
+        normal_init(self.reg_out, std=0.01)
+        
+        normal_init(self.cls_linear, std=0.01)
+        normal_init(self.cls_out, std=0.01)
+
+
+    def forward_single(self, feat, dcn_offset, topn_idx, topn_points, prev_topn_bbox):
+        """
+
+            Args:
+                feat (tensor): shape = [B, c_in, feat_h, feat_w]
+                dcn_offset (tensor): shape = [B, num_points * 2, feat_h, feat_w]
+                topn_idx (tensor): shape = [B, 1, topn]
+                topn_points (tensor): shape = [B, num_points * 2, topn]
+                prev_topn_bbox (tensor): shape = [B, topn, 4]
+            
+            Returns:
+                topn_box_refine (tensor): shape = [B, topn, 4]
+                topn_cls_refine (tensor): shape = [B, topn, num_classes]
+                offset_refine (tensor): shape = [B, num_points * 2, topn]
+                topn_points_refine (tensor): shape = [B, topn, 4]
+        """
+        batch_size = feat.shape[0]
+        feat_h, feat_w = feat.shape[-2:]
+
+        # dcn_feat shape = feat shape
+        dcn_feat = self.dcn(feat, dcn_offset)
+
+        # offset shape = [B, num_points * 2, feat_h, feat_w]
+        offset = self.offset_out(self.relu(self.offset_conv(dcn_feat)))
+        # topn_offset shape = [B, num_points * 2, topn]
+        topn_offset = torch.gather(offset.view(batch_size, 2 * self.num_points, -1), -1, topn_idx) 
+        topn_points_refine = topn_offset + topn_points
+        # topn_points_refine_transposed shape = [B, num_points, topn, 2]
+        topn_points_refine_transposed = topn_points_refine.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)     
+        # top_feat shape = [B, num_points, topn, c]
+        topn_feat = torch.nn.functional.grid_sample(dcn_feat, topn_points_refine_transposed)
+        # top_feat shape = [B, num_points * point_feat_channels, topn]
+        topn_feat = topn_feat.view((batch_size, self.num_points * self.point_feat_channels, -1))
+
+        # topn_points_refine_encoded shape = [B, num_points * 2, topn]
+        topn_points_refine_encoded = topn_points_refine
+        # topn_points_refine_encoded shape = [B, point_feat_channels, topn]
+        for conv in self.encode_points_convs:
+            topn_points_refine_encoded = conv(topn_points_refine_encoded)
+        
+        # topn_feat_concat shape = [B, (num_points + 1) * point_feat_channels, topn]
+        topn_feat_concat = torch.cat([topn_feat, topn_points_refine_encoded], axis=-2)
+        # topn_feat_concat shape = [B, (num_points + 1) * point_feat_channels, topn]
+        for conv in self.concat_feat_convs:
+            topn_feat_concat = conv(topn_feat_concat)
+
+        # topn_feat_concat shape = [B, topn, (num_points + 1) * point_feat_channels]
+        topn_feat_concat = torch.transpose(topn_feat_concat, -2, -1)
+        topn_box_delta = self.reg_out(self.reg_linear(topn_feat_concat))
+        topn_box_refine = self.applay_delta(topn_box_delta, prev_topn_bbox)
+
+        topn_cls_refine = self.cls_out(self.cls_linear(topn_feat_concat))
+
+        return topn_box_refine, topn_cls_refine, offset, topn_points_refine   
+
+
+    def applay_delta(self, topn_delta, topn_boxes):
+        """
+            Sparse RCNN 中的坐标变换方式
+            Args:
+                topn_delta (tensor): shape = [B, topn, 4], 4: (cx_delta, cy_delta, w_delta, h_delta)
+                topn_boxes (tensor): shape = [B, tpon, 4], 4: (cx, cy, w, h)
+            
+            Returns:
+                pred_boxes (tensor): shape = [B, topn, 4], 4: (cx, cy, w, h) 
+        """
+        ctr_x = topn_boxes[..., 0:1]
+        ctr_y = topn_boxes[..., 1:2]
+        widths = topn_boxes[..., 2:3]
+        heights = topn_boxes[..., 3:4]
+
+        wx, wy, ww, wh = self.bbox_weights
+        dx = topn_delta[..., 0:1] / wx
+        dy = topn_delta[..., 1:2] / wy
+        dw = topn_delta[..., 2:3] / ww
+        dh = topn_delta[..., 3:4] / wh
+
+        # Prevent sending too large values into torch.exp()
+        # dw = torch.clamp(dw, max=self.scale_clamp)
+        # dh = torch.clamp(dh, max=self.scale_clamp)
+        
+        pred_ctr_x = dx * widths + ctr_x
+        pred_ctr_y = dy * heights + ctr_y
+        pred_w = torch.exp(dw) * widths
+        pred_h = torch.exp(dh) * heights
+
+        pred_boxes = torch.cat([pred_ctr_x, pred_ctr_y, widths, heights], dim=-1)
+
+        return pred_boxes
+
+
+    def loss_single(self, bbox_refine,
+                    cls_refine,
+                    bbox_gt, bbox_weights,
+                    cls_gt, cls_weights,
+                    num_total_samples):
+        """
+            在不同scale下进行
+            
+            Args:
+                bbox_refine (tensor): shape = [B * topn, 4], 4: (cx, cy, w, h)
+                cls_refine (tensor): shape = [B * topn, num_classes]
+                bbox_gt (tensor): shape = [B * topn, 4], 4: (cx, cy, w, h)
+                bbox_weights (tensor): shape = [B * topn, 4]
+                cls_gt (tensor): shape = [B * topn, num_classes]
+                cls_weights (tensor): shape = [B * topn]
+                num_total_samples (int): 
+
+            Returns:
+                loss_bbox, loss_cls 
+        """
+        
+        loss_bbox = self.loss_bbox(bbox_refine,
+                                   bbox_gt,
+                                   bbox_weights,
+                                   avg_factor=num_total_samples)
+
+        loss_cls = self.loss_cls(cls_refine,
+                                 cls_gt,
+                                 cls_weights, 
+                                 avg_factor=num_total_samples)
+
+        return loss_bbox, loss_cls
+
 @HEADS.register_module()
 class SparseRepPointsHead(AnchorFreeHead):
 
@@ -37,6 +265,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                         neg_iou_thr=0.4,
                         min_pos_iou=0,
                         ignore_iof_thr=-1)),
+                 refine_times=1,
                  **kwargs):
 
         self.stacked_encode = stacked_encode
@@ -78,6 +307,23 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.loss_cls = build_loss(loss_cls)
         
         self.cfg_loss_obj = loss_obj
+
+        self.refine_times = refine_times
+        if refine_times > 0:
+            self.refineHead_list =[RefineHead(self.cls_out_channels,
+                                              self.in_channels,
+                                              self.feat_channels, 
+                                              self.point_feat_channels,
+                                              self.num_points, 
+                                              self.top_k, 
+                                              self.stacked_convs, 
+                                              self.stacked_encode, 
+                                              self.output_strides, 
+                                              loss_bbox, 
+                                              loss_cls) for _ in range(self.refine_times)]
+            for h in self.refineHead_list:
+                h.init_layers()
+                h.init_weights()
 
     def _init_layers(self):
         """Initialize layers of the head."""
@@ -130,21 +376,6 @@ class SparseRepPointsHead(AnchorFreeHead):
                           concat_feat_channels,
                           3, 1, 1).cuda())
 
-        # self.reg_conv = nn.Conv1d(concat_feat_channels,
-        #                           concat_feat_channels // 2,
-        #                           3, 1, 1).cuda()
-        # self.reg_out = nn.Conv1d(concat_feat_channels // 2,
-        #                          4,
-        #                          1, 1, 0).cuda()
-        # self.reg_sigmoid_out = nn.Sigmoid().cuda()
-
-        # self.cls_conv = nn.Conv1d(concat_feat_channels,
-        #                           concat_feat_channels // 2,
-        #                           3, 1, 1).cuda()
-        # self.cls_out = nn.Conv1d(concat_feat_channels // 2,
-        #                          self.cls_out_channels,
-        #                          1, 1, 0).cuda()
-        
         # transposed [B, (k*k+1)*C, topn] -> [B, topn, (k*k+1) *C]
         self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
         self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
@@ -152,7 +383,6 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         self.cls_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
         self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels).cuda()
-
 
     def init_weights(self):
         for m in self.convs:
@@ -170,20 +400,36 @@ class SparseRepPointsHead(AnchorFreeHead):
         for m in self.concat_feat_convs:
             normal_init(m, std=0.01)
         
-        # normal_init(self.reg_conv, std=0.01)
-        # normal_init(self.reg_out, std=0.01)
-
-        # normal_init(self.cls_conv, std=0.01)
-        # normal_init(self.cls_out, std=0.01)
-
         normal_init(self.reg_linear, std=0.01)
         normal_init(self.reg_out, std=0.01)
 
         normal_init(self.cls_linear, std=0.01)
         normal_init(self.cls_out, std=0.01)
-
+    
     def forward(self, feats):
-        return multi_apply(self.forward_single, feats)
+        """
+            Returns: 
+                objectness_logits (list[tensor]): [obj_scale1, obj_scale2, ..., obj_scale5]
+                    obj_scale1: shape = [B, 1, H, W] 
+                topn_box (list[tensor]): [topn_box_scale1, topn_box_scale2, ..., topn_box_scale5]
+                    topn_box_scale1: shape = [B. topn, 4]
+                topn_cls (list[tensor]): [topn_cls_scale1, topn_cls_scale2, ..., topn_cls_scale5]
+                    topn_cls_scale1: shape = [B, topn, num_classes]
+                topn_box_refine_list (list[list[tensor]]): [
+                    [topn_box_refine1_scale1, topn_box_refine2_scale1, ..., topn_box_refinen_scale1],
+                    [topn_box_refine1_scale2, topn_box_refine2_scale2, ..., topn_box_refinen_scale2],
+                    [], ...]
+                    topn_box_refine1_scale1: shape = [B, topn, 4]
+                topn_cls_refine_list: [
+                    [topn_cls_refine1_scale1, topn_cls_refine2_scale1, ..., topn_cls_refinen_scale1],
+                    [topn_cls_refine1_scale2, topn_cls_refine2_scale2, ..., topn_cls_refinen_scale2],
+                    [], ...]
+                    topn_cls_refine1_scale1: shape = [B, topn, num_classes]
+                topn_idx (list[tensor]): [topn_idx_scale1, topn_idx_scale2, ..., topn_idx_scale5]
+                    topn_idx_scale1: shape = [B, topn, 1]
+        """
+        result =  multi_apply(self.forward_single, feats)
+        return result
 
     def forward_single(self, x):
         # - Forward feature map of a single FPN level.
@@ -230,7 +476,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
-        print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
+        # print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1))
 
@@ -241,26 +487,49 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_feat_concat = torch.cat([topn_feat, topn_points_encoded], axis=-2)
         for conv in self.concat_feat_convs:
             topn_feat_concat = conv(topn_feat_concat)
-        
-        # topn_box = self.reg_out(self.reg_conv(topn_feat_concat))
-        # topn_box = self.reg_sigmoid_out(topn_box)
-        # topn_cls = self.cls_out(self.cls_conv(topn_feat_concat))
-        
-        # - [B, 4, topn] -> [B, topn ,4]
-        # topn_box = torch.transpose(topn_box, -2, -1)
-        # topn_cls = torch.transpose(topn_cls, -2, -1)
-        # topn_idx = torch.transpose(topn_idx, -2, -1)
 
         topn_feat_concat = torch.transpose(topn_feat_concat, -2, -1)
         topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
         topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(self.cls_linear(topn_feat_concat))
+
+        if self.refine_times > 0:
+            topn_box_refine_list = []
+            topn_cls_refine_list = []
+            topn_box_refine = topn_box
+            topn_points_refine = topn_points
+            offset_refine = offset
+            for h in self.refineHead_list:
+                (topn_box_refine,   
+                 topn_cls_refine,
+                 tmp_offset,
+                 topn_points_refine)  = h.forward_single(x,
+                                                         offset_refine,
+                                                         topn_idx,
+                                                         topn_points_refine,
+                                                         topn_box_refine)
+                offset_refine = offset_refine + tmp_offset
+                topn_box_refine_list.append(topn_box_refine)
+                topn_cls_refine_list.append(topn_cls_refine)
+            
         topn_idx = torch.transpose(topn_idx, -2, -1)
 
-        if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
-            return objectness_logits, topn_box, topn_cls, topn_idx
+        if self.refine_times > 0:
+            if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
+                return (objectness_logits, 
+                        topn_box, topn_cls,
+                        topn_box_refine_list, topn_cls_refine_list,
+                        topn_idx)
+            else:
+                return (objectness,
+                        topn_box, topn_cls,
+                        topn_box_refine_list, topn_cls_refine_list,
+                        topn_idx)
         else:
-            return objectness, topn_box, topn_cls, topn_idx
+            if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
+                return objectness_logits, topn_box, topn_cls, topn_idx
+            else:
+                return objectness, topn_box, topn_cls, topn_idx
 
     def _get_objectness_single(self, gt_bboxes, img_meta, output_strides, objectness_shape_list):
         """
@@ -590,6 +859,8 @@ class SparseRepPointsHead(AnchorFreeHead):
              objectness_pred,
              bbox_pred,
              cls_pred,
+             box_refine_list,
+             cls_refine_list,
              topn_idx,
              gt_bboxes,
              gt_labels,
@@ -604,6 +875,16 @@ class SparseRepPointsHead(AnchorFreeHead):
                     坐标是(cx, cy, x, y), 且数值是[0,1]
                 cls_pred (list[tensor]): [level1_cls_tensor, level2_cls_tensor, ...]
                     level1_cls_tensor: [num_imgs, topn, num_cls]
+                box_refine_list (list[list[tensor]]): [
+                    [box_refine1_scale1, box_refine2_scale1, ..., box_refinen_scale1],
+                    [box_refine1_scale2, box_refine2_scale2, ..., box_refinen_scale2],
+                    [], ...]
+                    box_refine1_scale1: shape = [B, topn, 4]
+                cls_refine_list: [
+                    [cls_refine1_scale1, cls_refine2_scale1, ..., cls_refinen_scale1],
+                    [cls_refine1_scale2, cls_refine2_scale2, ..., cls_refinen_scale2],
+                    [], ...]
+                    cls_refine1_scale1: shape = [B, topn, num_classes]
                 topn_idx (list[tensor]): [level1_idx_tensor, level2_idx_tensor, ...]
                     level1_idx_tensor: [num_imgs, topn, 1]
                 gt_bboxes (list[tensor]): [img1_gt_bbox_tensor, img2_gt_bbox_tensor, ...]
@@ -666,6 +947,8 @@ class SparseRepPointsHead(AnchorFreeHead):
                                                     objectness_pred,
                                                     bbox_pred_list,
                                                     cls_pred_list,
+                                                    box_refine_list,
+                                                    cls_refine_list,
                                                     gt_objectness_list,
                                                     bbox_gt_list, bbox_pred_weights_list,
                                                     labels_list, label_weights_list,
@@ -683,6 +966,8 @@ class SparseRepPointsHead(AnchorFreeHead):
                     objectness_pred,
                     bbox_pred,
                     cls_pred,
+                    bbox_refine,
+                    cls_refine,
                     objecness_gt,
                     bbox_gt, bbox_weights,
                     cls_gt, cls_weights,
@@ -694,12 +979,16 @@ class SparseRepPointsHead(AnchorFreeHead):
                 objectness_pred (tensor): shape = [num_imgs, 1, H, W]
                 bbox_pred (tensor): shape = [num_imgs, topn, 4]
                 cls_pred (tensor): shape = [num_imgs, topn, num_cls]
+                bbox_refine (list[tensor]): [bbox_refine1, bbox_refine2, ...]
+                    bbox_refine1 shape = [B, topn, 4]
+                cls_refine(list[tensor]): [cls_refine1, cls_refine2, ...]
+                    cls_refine1 shape = [B, topn, num_classes]
                 objecness_gt (tensor): shape = [num_imgs, 1, H, W]
                 bbox_gt (tensor): shape = [num_imgs, topn, 4]
                 bbox_weights (tensor): [num_imgs, topn, 4]
                 cls_gt (tensor): shape = [num_imgs, topn]
                 cls_weights (tensor): shape = [num_imgs, topn]
-                num_total_samples (int): [description]
+                num_total_samples (int): 
 
             Returns:
                 loss_obj, loss_bbox, loss_cls
@@ -723,6 +1012,19 @@ class SparseRepPointsHead(AnchorFreeHead):
                                  cls_gt,
                                  cls_weights,
                                  avg_factor=num_total_samples)
+
+        if self.refine_times > 0:
+            for i, h in enumerate(self.refineHead_list):
+                tmp_bbox_refine = torch.reshape(bbox_refine[i], (-1, 4))
+                tmp_cls_refine = torch.reshape(cls_refine[i], (-1, self.cls_out_channels))
+
+                loss_bbox_refine, loss_cls_refine = h.loss_single(tmp_bbox_refine, 
+                                                                  tmp_cls_refine,
+                                                                  bbox_gt, bbox_weights,
+                                                                  cls_gt, cls_weights,
+                                                                  num_total_samples) 
+                loss_bbox += loss_bbox_refine
+                loss_cls += loss_cls_refine
 
         return loss_obj, loss_bbox, loss_cls
 

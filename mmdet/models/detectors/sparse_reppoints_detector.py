@@ -33,10 +33,29 @@ class SparseRepPointsDetector(SingleStageDetector):
                 corresponds to each class.
         """
         x = self.extract_feat(img)
-        objectness, topn_box, topn_cls, topn_idx = self.bbox_head(x)
-        # bbox_pred, cls_pred, img_metas, cfg=None, rescale=False, with_nms=False
-        bbox_list = self.bbox_head.get_bboxes(
-            topn_box, topn_cls, img_metas, rescale=rescale)
+        if self.bbox_head.refine_times == 0:
+            objectness, topn_box, topn_cls, topn_idx = self.bbox_head(x)
+            # bbox_pred, cls_pred, img_metas, cfg=None, rescale=False, with_nms=False
+            bbox_list = self.bbox_head.get_bboxes(
+                topn_box, topn_cls, img_metas, rescale=rescale, with_nms=False)
+        else:
+            (objectness, 
+            topn_box, topn_cls,
+            topn_box_refine_list, topn_cls_refine_list,
+            topn_idx) = self.bbox_head(x)
+            #! 只选最后一次的refine结果作为最终的结果
+            topn_box_refine_last = []
+            topn_cls_refine_last = []
+            for topn_box_refine, topn_cls_refine in zip(topn_box_refine_list, topn_cls_refine_list):
+                topn_box_refine_last.append(topn_box_refine[-1])
+                topn_cls_refine_last.append(topn_cls_refine[-1])
+
+            bbox_list = self.bbox_head.get_bboxes(topn_box_refine_last,
+                                                  topn_cls_refine_last,
+                                                  img_metas,
+                                                  rescale=rescale,
+                                                  with_nms=False)
+            
         # skip post-processing when exporting to ONNX
         if torch.onnx.is_in_onnx_export():
             return bbox_list
