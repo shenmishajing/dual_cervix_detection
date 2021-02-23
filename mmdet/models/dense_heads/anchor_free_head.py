@@ -58,7 +58,8 @@ class AnchorFreeHead(BaseDenseHead, BBoxTestMixin):
                  test_cfg=None):
         super(AnchorFreeHead, self).__init__()
         self.num_classes = num_classes
-        self.cls_out_channels = num_classes
+        self.use_sigmoid_cls = loss_cls["use_sigmoid"]
+        self.cls_out_channels = num_classes if self.use_sigmoid_cls else (num_classes + 1)
         self.in_channels = in_channels
         self.feat_channels = feat_channels
         self.stacked_convs = stacked_convs

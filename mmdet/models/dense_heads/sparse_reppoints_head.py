@@ -40,6 +40,13 @@ class RefineHead(object):
         self.num_points = num_points
         self.dcn_kernel = int(np.sqrt(num_points))
         self.dcn_pad = int((self.dcn_kernel - 1) / 2)
+        
+        dcn_base = np.arange(-self.dcn_pad, self.dcn_pad + 1).astype(np.float64)
+        dcn_base_y = np.repeat(dcn_base, self.dcn_kernel)
+        dcn_base_x = np.tile(dcn_base, self.dcn_kernel)
+        dcn_base_offset = np.stack([dcn_base_y, dcn_base_x], axis=1).reshape((-1))
+        # - dcn_base_offset.shape = [1, 18, 1] 18: (-1, -1), (-1, 0)...
+        self.dcn_base_offset = torch.tensor(dcn_base_offset).view(1, -1, 1, 1)
 
         self.top_k = top_k 
         self.stacked_linears = stacked_linears
@@ -70,23 +77,19 @@ class RefineHead(object):
                                     1, 1, 0).cuda()
 
         # points encoding
-        self.encode_points_linears = nn.ModuleList()
-        for i in range(self.stacked_encode):
-            chn = pts_out_dim if i == 0 else self.point_feat_channels
-            self.encode_points_linears.append(
-                nn.Linear(chn, self.point_feat_channels).cuda())
+        self.encode_points_linear = nn.Linear(pts_out_dim, self.point_feat_channels, False).cuda()
         
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
-        self.concat_feat_linears = nn.ModuleList()
-        for i in range(self.stacked_linears):
-            self.concat_feat_linears.append(
-                nn.Linear(concat_feat_channels, concat_feat_channels).cuda())
+        self.concat_feat_linears = nn.ModuleList([
+            nn.Linear(concat_feat_channels, self.feat_channels, False).cuda(),
+            nn.ReLU(inplace=True).cuda(),
+            nn.Linear(self.feat_channels, self.feat_channels, False).cuda(),
+            nn.ReLU(inplace=True).cuda()
+        ])
 
-        self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
+        self.reg_linear = nn.Linear(self.feat_channels, self.feat_channels).cuda()
         self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
-        self.reg_sigmoid_out = nn.Sigmoid().cuda()
 
-        self.cls_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
         self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels).cuda()
 
 
@@ -96,16 +99,15 @@ class RefineHead(object):
         normal_init(self.offset_conv, std=0.01)
         normal_init(self.offset_out, std=0.01)
 
-        for m in self.encode_points_linears:
-            normal_init(m, std=0.01)
+        normal_init(self.encode_points_linear, std=0.01)
 
         for m in self.concat_feat_linears:
-            normal_init(m, std=0.01)
+            if isinstance(m, nn.Linear):
+                normal_init(m, std=0.01)
         
         normal_init(self.reg_linear, std=0.01)
         normal_init(self.reg_out, std=0.01)
         
-        normal_init(self.cls_linear, std=0.01)
         normal_init(self.cls_out, std=0.01)
 
 
@@ -127,14 +129,18 @@ class RefineHead(object):
         """
         batch_size = feat.shape[0]
         feat_h, feat_w = feat.shape[-2:]
-
+        dcn_base_offset = self.dcn_base_offset.type_as(feat)
+        dcn_offset = dcn_offset - dcn_base_offset
         # dcn_feat shape = feat shape
         dcn_feat = self.dcn(feat, dcn_offset)
 
         # offset shape = [B, num_points * 2, feat_h, feat_w]
         offset = self.offset_out(self.relu(self.offset_conv(dcn_feat)))
+        topn_idx_repeat = topn_idx.repeat([1, 2 * self.num_points, 1])
         # topn_offset shape = [B, num_points * 2, topn]
-        topn_offset = torch.gather(offset.view(batch_size, 2 * self.num_points, -1), -1, topn_idx) 
+        topn_offset = torch.gather(offset.view(batch_size, 2 * self.num_points, -1), -1, topn_idx_repeat) 
+        factor = torch.tensor([feat_h, feat_w], dtype=torch.float32).repeat([self.num_points,]).view((1, 2 * self.num_points, 1)).cuda()        
+        topn_offset /= factor
         topn_points_refine = topn_offset + topn_points
         # topn_points_refine_transposed shape = [B, num_points, topn, 2]
         topn_points_refine_transposed = topn_points_refine.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)     
@@ -146,8 +152,7 @@ class RefineHead(object):
         # topn_points_refine_encoded shape = [B, num_points * 2, topn]
         topn_points_refine_encoded = torch.transpose(topn_points_refine, -2, -1)
         # topn_points_refine_encoded shape = [B, point_feat_channels, topn]
-        for l in self.encode_points_linears:
-            topn_points_refine_encoded = l(topn_points_refine_encoded)
+        topn_points_refine_encoded = self.encode_points_linear(topn_points_refine_encoded)
         
         # topn_feat_concat shape = [B, (num_points + 1) * point_feat_channels, topn]
         topn_feat_concat = torch.cat([topn_feat, topn_points_refine_encoded], axis=-1)
@@ -158,7 +163,7 @@ class RefineHead(object):
         # topn_feat_concat shape = [B, topn, (num_points + 1) * point_feat_channels]
         topn_box_delta = self.reg_out(self.reg_linear(topn_feat_concat))
         topn_box_refine = self.apply_delta(topn_box_delta, prev_topn_bbox)
-        topn_cls_refine = self.cls_out(self.cls_linear(topn_feat_concat))
+        topn_cls_refine = self.cls_out(topn_feat_concat)
 
         return topn_box_refine, topn_cls_refine, offset, topn_points_refine   
 
@@ -324,56 +329,40 @@ class SparseRepPointsHead(AnchorFreeHead):
     def _init_layers(self):
         """Initialize layers of the head."""
 
-        self.relu = nn.ReLU(inplace=True).cuda()
-
-        self.convs = nn.ModuleList()
-        for i in range(self.stacked_convs):  # - stacked_convs = 3
-            chn = self.in_channels if i == 0 else self.feat_channels
-            self.convs.append(
-                nn.Conv2d(chn,
-                          self.feat_channels,
-                          3, 1, 1).cuda())
-        
+        self.relu = nn.ReLU(inplace=True)
         pts_out_dim = 2 * self.num_points
         self.offset_conv = nn.Conv2d(self.feat_channels,
                                      self.point_feat_channels,
-                                     3, 1, 1).cuda()
+                                     3, 1, 1)
         self.offset_out = nn.Conv2d(self.point_feat_channels,
                                      pts_out_dim,
-                                     1, 1, 0).cuda()
+                                     1, 1, 0)
 
         self.objectness_conv = nn.Conv2d(self.feat_channels,
                                          self.point_feat_channels,
-                                         3, 1, 1).cuda()
+                                         3, 1, 1)
         self.objectness_out = nn.Conv2d(self.point_feat_channels,
                                         1,
-                                        1, 1, 0).cuda()
-        self.objectness_sigmoid_out = nn.Sigmoid().cuda()
+                                        1, 1, 0)
+        self.objectness_sigmoid_out = nn.Sigmoid()
 
-        self.encode_points_linears = nn.ModuleList()
-        for i in range(self.stacked_encode):
-            #! 9 个点的话，如果用3的1维卷积核，那么需要4个卷积层才能覆盖9个点
-            chn = pts_out_dim if i == 0 else self.point_feat_channels
-            self.encode_points_linears.append(
-                nn.Linear(chn, self.point_feat_channels).cuda())
+        self.encode_points_linear = nn.Linear(pts_out_dim, self.point_feat_channels, False)
 
         concat_feat_channels = (self.num_points + 1) * self.point_feat_channels
-        self.concat_feat_linears = nn.ModuleList()
-        for i in range(self.stacked_linears):
-            self.concat_feat_linears.append(
-                nn.Linear(concat_feat_channels, concat_feat_channels).cuda())
+        self.concat_feat_linears = nn.ModuleList([
+            nn.Linear(concat_feat_channels, self.feat_channels, False),
+            nn.ReLU(inplace=True),
+            nn.Linear(self.feat_channels, self.feat_channels, False),
+            nn.ReLU(inplace=True)
+        ])
 
         # transposed [B, (k*k+1)*C, topn] -> [B, topn, (k*k+1) *C]
-        self.reg_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
-        self.reg_out = nn.Linear(self.feat_channels, 4).cuda()
-        self.reg_sigmoid_out = nn.Sigmoid().cuda()
+        self.reg_linear = nn.Linear(self.feat_channels, self.feat_channels)
+        self.reg_out = nn.Linear(self.feat_channels, 4)
 
-        self.cls_linear = nn.Linear(concat_feat_channels, self.feat_channels).cuda()
-        self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels).cuda()
+        self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels)
 
     def init_weights(self):
-        for m in self.convs:
-            normal_init(m, std=0.01)
 
         normal_init(self.offset_conv, std=0.01)
         normal_init(self.offset_out, std=0.01)
@@ -381,16 +370,15 @@ class SparseRepPointsHead(AnchorFreeHead):
         normal_init(self.objectness_conv, std=0.01)
         normal_init(self.objectness_out, std=0.01)
 
-        for m in self.encode_points_linears:
-            normal_init(m, std=0.01)
+        normal_init(self.encode_points_linear, std=0.01)
         
         for m in self.concat_feat_linears:
-            normal_init(m, std=0.01)
+            if isinstance(m, nn.Linear):
+                normal_init(m, std=0.01)
         
         normal_init(self.reg_linear, std=0.01)
         normal_init(self.reg_out, std=0.01)
 
-        normal_init(self.cls_linear, std=0.01)
         normal_init(self.cls_out, std=0.01)
     
     def forward(self, feats):
@@ -421,24 +409,14 @@ class SparseRepPointsHead(AnchorFreeHead):
     def forward_single(self, x):
         # - Forward feature map of a single FPN level.
         # - dcn_base_offset.shape = [1, 18, 1, 1] 18: (-1, -1), (-1, 0)...
+        point_inits = 0
         batch_size = x.shape[0]
         feat_h, feat_w = x.shape[-2:]
-        #! reppoints 中预测的偏移量以及base_offset不是归一化的，但是grid_sample中要求坐标为[-1,1]，这里要进行归一化
-        dcn_base_offset = self.dcn_base_offset.type_as(x).unsqueeze(dim=2)
-        dcn_base_offset = dcn_base_offset.reshape((-1, 2))
-        dcn_base_offset = torch.cat([dcn_base_offset[:, 0:1] / feat_h,
-                                     dcn_base_offset[:, 1:2] / feat_w], dim=-1)
-        dcn_base_offset = dcn_base_offset.reshape((1, -1, 1, 1))
 
         feat = x 
-        for conv in self.convs:
-            feat = conv(feat)
         
         offset = self.offset_out(
             self.relu(self.offset_conv(feat)))
-        #! dcn_base_offset，如果3*3的网格，中心坐标是(0,0)，中心坐标加上dcn_base_offset可以得到网格其他位置坐标
-        #! 取值是[[-1,-1],[-1,0],[-1,1],[0,-1],[0,0],[0,1],[1,-1],[1,0],[1,1]]
-        offset = offset + dcn_base_offset
 
         # objectness
         if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
@@ -452,14 +430,16 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_objectness, topn_idx = torch.topk(objectness.view((batch_size, 1, feat_h * feat_w)), self.top_k, dim=-1)
         # - topn_grid_coord shape = [B, 2, topn] topn_idx中的索引为[0, H * W - 1],这里转化为二维索引
         topn_grid_coord = torch.cat([topn_idx // feat_w, topn_idx % feat_w], dim=1)
-        #! 将grid坐标由[0, feat_h/feat_w] 变成 [-1, 1]
-        topn_grid_coord = torch.cat([topn_grid_coord[:, 0:1] / feat_h,
-                                     topn_grid_coord[:, 1:2] / feat_w], dim=1)
-        topn_grid_coord =  2.0 * topn_grid_coord - 1.0
 
         # - topn_offset shape = [B, 2 * num_points, topn]
-        topn_offset = torch.gather(offset.view((batch_size, 2 * self.num_points, -1)), -1, topn_idx)
+        topn_idx_repeat = topn_idx.repeat([1, 2 * self.num_points, 1])
+        topn_offset = torch.gather(offset.view((batch_size, 2 * self.num_points, -1)), -1, topn_idx_repeat)
+        # shape = [B, 2 * self.num_points, topn]
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
+        factor = torch.tensor([feat_h, feat_w], dtype=torch.float32).repeat([self.num_points,]).view((1, 2 * self.num_points, 1)).cuda()        
+        topn_points /= factor
+        topn_points = 2.0 * topn_points - 1.0
+
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
@@ -468,16 +448,14 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1)).transpose(-2, -1)
 
         topn_points_encoded = torch.transpose(topn_points, -2, -1)
-        for l in self.encode_points_linears:
-            topn_points_encoded = l(topn_points_encoded)
+        topn_points_encoded = self.encode_points_linear(topn_points_encoded)
 
         topn_feat_concat = torch.cat([topn_feat, topn_points_encoded], axis=-1)
         for l in self.concat_feat_linears:
             topn_feat_concat = l(topn_feat_concat)
 
         topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
-        topn_box = self.reg_sigmoid_out(topn_box)
-        topn_cls = self.cls_out(self.cls_linear(topn_feat_concat))
+        topn_cls = self.cls_out(topn_feat_concat)
 
         if self.refine_times > 0:
             topn_box_refine_list = []
