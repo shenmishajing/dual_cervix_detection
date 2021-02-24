@@ -117,15 +117,16 @@ class RefineHead(object):
             Args:
                 feat (tensor): shape = [B, c_in, feat_h, feat_w]
                 dcn_offset (tensor): shape = [B, num_points * 2, feat_h, feat_w]
-                topn_idx (tensor): shape = [B, 1, topn]
+                topn_idx (tensor): shape = [B, 1, topn] 
                 topn_points (tensor): shape = [B, num_points * 2, topn]
+                    ! unormalized
                 prev_topn_bbox (tensor): shape = [B, topn, 4]
             
             Returns:
                 topn_box_refine (tensor): shape = [B, topn, 4]
                 topn_cls_refine (tensor): shape = [B, topn, num_classes]
                 offset_refine (tensor): shape = [B, num_points * 2, topn]
-                topn_points_refine (tensor): shape = [B, topn, 4]
+                topn_points_refine_unormalized (tensor): shape = [B, topn, 4]
         """
         batch_size = feat.shape[0]
         feat_h, feat_w = feat.shape[-2:]
@@ -139,9 +140,12 @@ class RefineHead(object):
         topn_idx_repeat = topn_idx.repeat([1, 2 * self.num_points, 1])
         # topn_offset shape = [B, num_points * 2, topn]
         topn_offset = torch.gather(offset.view(batch_size, 2 * self.num_points, -1), -1, topn_idx_repeat) 
-        factor = torch.tensor([feat_h, feat_w], dtype=torch.float32).repeat([self.num_points,]).view((1, 2 * self.num_points, 1)).cuda()        
-        topn_offset /= factor
+        #! unormalized
         topn_points_refine = topn_offset + topn_points
+        topn_points_refine_unormalized = topn_points_refine
+        factor = torch.tensor([feat_h, feat_w], dtype=torch.float32).repeat([self.num_points,]).view((1, 2 * self.num_points, 1)).cuda()        
+        topn_points_refine /= factor
+        topn_points_refine = 2.0 * topn_points_refine - 1.0
         # topn_points_refine_transposed shape = [B, num_points, topn, 2]
         topn_points_refine_transposed = topn_points_refine.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)     
         # top_feat shape = [B, num_points, topn, c]
@@ -165,7 +169,7 @@ class RefineHead(object):
         topn_box_refine = self.apply_delta(topn_box_delta, prev_topn_bbox)
         topn_cls_refine = self.cls_out(topn_feat_concat)
 
-        return topn_box_refine, topn_cls_refine, offset, topn_points_refine   
+        return topn_box_refine, topn_cls_refine, offset, topn_points_refine_unormalized   
 
 
     def apply_delta(self, topn_delta, topn_boxes):
@@ -436,6 +440,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_offset = torch.gather(offset.view((batch_size, 2 * self.num_points, -1)), -1, topn_idx_repeat)
         # shape = [B, 2 * self.num_points, topn]
         topn_points = topn_offset + topn_grid_coord.repeat((1, self.num_points, 1))
+        topn_points_unormalized = topn_points
         factor = torch.tensor([feat_h, feat_w], dtype=torch.float32).repeat([self.num_points,]).view((1, 2 * self.num_points, 1)).cuda()        
         topn_points /= factor
         topn_points = 2.0 * topn_points - 1.0
@@ -443,7 +448,7 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_points_transposed = topn_points.view((-1, self.num_points, 2, self.top_k)).transpose(-1, -2)
         
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
-        # print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
+        print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1)).transpose(-2, -1)
 
@@ -461,16 +466,16 @@ class SparseRepPointsHead(AnchorFreeHead):
             topn_box_refine_list = []
             topn_cls_refine_list = []
             topn_box_refine = topn_box
-            topn_points_refine = topn_points
+            topn_points_refine_unormalized = topn_points_unormalized
             offset_refine = offset
             for h in self.refineHead_list:
                 (topn_box_refine,   
                  topn_cls_refine,
                  tmp_offset,
-                 topn_points_refine)  = h.forward_single(x,
+                 topn_points_refine_unormalized)  = h.forward_single(x,
                                                          offset_refine,
                                                          topn_idx,
-                                                         topn_points_refine,
+                                                         topn_points_refine_unormalized,
                                                          topn_box_refine)
                 offset_refine = offset_refine + tmp_offset
                 topn_box_refine_list.append(topn_box_refine)
