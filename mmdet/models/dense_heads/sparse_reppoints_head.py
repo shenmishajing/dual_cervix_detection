@@ -362,6 +362,7 @@ class SparseRepPointsHead(AnchorFreeHead):
 
         # transposed [B, (k*k+1)*C, topn] -> [B, topn, (k*k+1) *C]
         self.reg_linear = nn.Linear(self.feat_channels, self.feat_channels)
+        self.reg_sigmoid_out = nn.Sigmoid()
         self.reg_out = nn.Linear(self.feat_channels, 4)
 
         self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels)
@@ -449,6 +450,11 @@ class SparseRepPointsHead(AnchorFreeHead):
         
         #! 要求给出索引范围必须（需要标准化）是[-1，1]
         # print("topn_points_transposed", topn_points_transposed.min(), topn_points_transposed.max(), topn_points_transposed.mean(), topn_points_transposed.std())
+        
+        # invalid_offset = torch.logical_or(topn_points_transposed < -1.0, topn_points_transposed > 1.0)
+        # num = invalid_offset.sum()
+        # s = invalid_offset.numel()
+        # print("invalid_offset %d/%d" % (int(num), int(s)))
         topn_feat = torch.nn.functional.grid_sample(feat, topn_points_transposed)
         topn_feat = topn_feat.view((batch_size , self.num_points * self.point_feat_channels, -1)).transpose(-2, -1)
 
@@ -460,6 +466,7 @@ class SparseRepPointsHead(AnchorFreeHead):
             topn_feat_concat = l(topn_feat_concat)
 
         topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
+        topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(topn_feat_concat)
 
         if self.refine_times > 0:
@@ -623,6 +630,27 @@ class SparseRepPointsHead(AnchorFreeHead):
             #! 将forward中bbox_pred理解为 (cx,cy,w,h), 取值为[0,1],但是是不是在[0,1]不能保证
             #! bbox_pred (cx, cy, w, h) [0,1] normalized
             #! gt_boxxes (x1, y1, x2, y2) unormalized
+
+            # xmin = bbox_pred[..., 0:1] - bbox_pred[..., 2:3] * 0.5 
+            # ymin = bbox_pred[..., 1:2] - bbox_pred[..., 3:4] * 0.5 
+            # xmax = bbox_pred[..., 0:1] + bbox_pred[..., 2:3] * 0.5 
+            # ymax = bbox_pred[..., 1:2] + bbox_pred[..., 3:4] * 0.5 
+
+            # invalid_xmin = xmin < 0.
+            # invalid_ymin = ymin < 0.
+            # invalid_xmax = xmax > 1.0
+            # invalid_ymax = ymax > 1.0
+            
+            # invalid_all_num = torch.logical_and(torch.logical_and(invalid_xmin, invalid_ymin),
+            #                                 torch.logical_and(invalid_xmax, invalid_ymax)).sum()
+
+            # invalid_any_num = torch.logical_or(torch.logical_or(invalid_xmin, invalid_ymin),
+            #                                 torch.logical_or(invalid_xmax, invalid_ymax)).sum()
+
+            # s = bbox_pred.shape[0]
+            # print("invalid_all_num %d/%d" % (int(invalid_all_num), int(s)))
+            # print("invalid_any_num %d/%d" % (int(invalid_any_num), int(s)))
+
             assign_result = self.assigner.assign(bbox_pred, 
                                                 cls_pred, 
                                                 gt_bboxes, 
