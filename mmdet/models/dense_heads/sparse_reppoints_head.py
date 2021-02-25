@@ -424,12 +424,8 @@ class SparseRepPointsHead(AnchorFreeHead):
             self.relu(self.offset_conv(feat)))
 
         # objectness
-        if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
-            objectness_logits = self.objectness_out(self.objectness_conv(feat))
-            objectness = self.objectness_sigmoid_out(objectness_logits)
-        else:
-            objectness = self.objectness_sigmoid_out(
-                self.objectness_out(self.objectness_conv(feat)))
+        objectness_logits = self.objectness_out(self.objectness_conv(feat))
+        objectness = self.objectness_sigmoid_out(objectness_logits)
 
         # - topn_objectness shape = [B, 1, topn], top_idx shape = [B, 1, topn]
         topn_objectness, topn_idx = torch.topk(objectness.view((batch_size, 1, feat_h * feat_w)), self.top_k, dim=-1)
@@ -491,21 +487,12 @@ class SparseRepPointsHead(AnchorFreeHead):
         topn_idx = torch.transpose(topn_idx, -2, -1)
 
         if self.refine_times > 0:
-            if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
-                return (objectness_logits, 
-                        topn_box, topn_cls,
-                        topn_box_refine_list, topn_cls_refine_list,
-                        topn_idx)
-            else:
-                return (objectness,
-                        topn_box, topn_cls,
-                        topn_box_refine_list, topn_cls_refine_list,
-                        topn_idx)
+            return (objectness_logits, 
+                    topn_box, topn_cls,
+                    topn_box_refine_list, topn_cls_refine_list,
         else:
-            if self.cfg_loss_obj["type"] == "CrossEntropyLoss":
-                return objectness_logits, topn_box, topn_cls, topn_idx
-            else:
-                return objectness, topn_box, topn_cls, topn_idx
+            return objectness_logits, topn_box, topn_cls, topn_idx
+          
 
     def _get_objectness_single(self, gt_bboxes, img_meta, output_strides, objectness_shape_list):
         """
