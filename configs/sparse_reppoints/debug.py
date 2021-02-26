@@ -28,36 +28,36 @@ model = dict(
         feat_channels=256,
         point_feat_channels=256,
         num_points=9,
-        top_k=20,
+        topn=20,
         stacked_convs=3,
         stacked_linears=2,
         stacked_encode=2,
         output_strides=[8, 16, 32, 64, 128],
         loss_obj=dict(type='CrossEntropyLoss', use_sigmoid=True),
-        loss_bbox=dict(type='SmoothL1Loss'),
+        loss_bbox=dict(type='GIoULoss'),
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
             loss_weight=1.0),
-        refine_times=1
+        refine_times=0
     )
 )
 
 # training and testing settings
 train_cfg = dict(
-    # assigner = dict(
-    #     type='HungarianAssigner',
-    #     cls_cost=dict(type='ClassificationCost', weight=1.),
-    #     reg_cost=dict(type='BBoxL1Cost', weight=1.0),
-    #     iou_cost=dict(type='IoUCost', iou_mode='giou', weight=1.0)),
-    assigner=dict(
-            type='MaxIoUAssigner',
-            pos_iou_thr=0.5,
-            neg_iou_thr=0.4,
-            min_pos_iou=0,
-            ignore_iof_thr=-1),
+    assigner = dict(
+        type='HungarianAssigner',
+        cls_cost=dict(type='ClassificationCost', weight=1.),
+        reg_cost=dict(type='BBoxL1Cost', weight=1.0),
+        iou_cost=dict(type='IoUCost', iou_mode='giou', weight=1.0)),
+    # assigner=dict(
+    #         type='MaxIoUAssigner',
+    #         pos_iou_thr=0.5,
+    #         neg_iou_thr=0.4,
+    #         min_pos_iou=0,
+    #         ignore_iof_thr=-1),
     allowed_border=-1,     
     pos_weight=-1,
 )
