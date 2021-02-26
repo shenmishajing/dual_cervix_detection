@@ -202,7 +202,7 @@ class RefineHead(object):
         pred_w = torch.exp(dw) * widths
         pred_h = torch.exp(dh) * heights
 
-        pred_boxes = torch.cat([pred_ctr_x, pred_ctr_y, widths, heights], dim=-1)
+        pred_boxes = torch.cat([pred_ctr_x, pred_ctr_y, pred_w, pred_h], dim=-1)
 
         return pred_boxes
 
@@ -582,7 +582,7 @@ class SparseRepPointsHead(AnchorFreeHead):
                 pos_inds (tensor): shape = (num_level * topn, )
                 neg_inds (tensor): shape = (num_level * topn, )
         """
-        inside_flags = valid_flags
+        inside_flags = torch.squeeze(valid_flags)
         if not inside_flags.any():
             return (None, ) * 7
         
@@ -952,8 +952,8 @@ class SparseRepPointsHead(AnchorFreeHead):
             Returns:
                 loss_obj, loss_bbox, loss_cls
         """
-        objectness_pred = torch.reshape(objectness_pred, (-1, 1))
-        objecness_gt = torch.reshape(objecness_gt, (-1, 1))
+        # objectness_pred = torch.reshape(objectness_pred, (-1, 1))
+        # objecness_gt = torch.reshape(objecness_gt, (-1, 1))
         loss_obj = self.loss_obj(objectness_pred, objecness_gt)
         
         bbox_pred = torch.reshape(bbox_pred, (-1, 4))
