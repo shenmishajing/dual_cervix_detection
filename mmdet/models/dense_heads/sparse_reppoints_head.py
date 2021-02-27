@@ -463,8 +463,14 @@ class SparseRepPointsHead(AnchorFreeHead):
             topn_feat_concat = l(topn_feat_concat)
 
         topn_box  = self.reg_out(self.reg_linear(topn_feat_concat))
-        topn_box = self.reg_sigmoid_out(topn_box)
+        # topn_box = self.reg_sigmoid_out(topn_box)
         topn_cls = self.cls_out(topn_feat_concat)
+
+        # ! 将box的预测理解为(dx, dy, w, h), 那么就不能经过sigmoid，不然dx, dy都是正的量
+        # - topn_grid_coord shape = [B, topn, 2], 2: (y, x)
+        topn_grid_coord = topn_grid_coord.transpose(-2, -1)
+        topn_grid_coord = torch.cat([topn_grid_coord[..., 1:2] / feat_w, topn_grid_coord[..., 0:1] / feat_h], dim=-1)
+        topn_box = torch.cat([topn_box[..., :2] + topn_grid_coord, topn_box[..., 2:].sigmoid()], dim=-1)
 
         if self.refine_times > 0:
             topn_box_refine_list = []

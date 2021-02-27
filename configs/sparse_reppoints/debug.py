@@ -4,10 +4,10 @@ _base_ = [
 ]
 model = dict(
     type="SparseRepPointsDetector",
-    pretrained='torchvision://resnet50',
+    pretrained='torchvision://resnet101',
     backbone=dict(
         type='ResNet',
-        depth=50,
+        depth=101,
         num_stages=4,
         out_indices=(0, 1, 2, 3),
         frozen_stages=1,
@@ -77,3 +77,8 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook')
     ])
+
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+ )
