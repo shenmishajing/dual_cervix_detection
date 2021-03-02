@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init
+from mmcv.cnn import ConvModule, bias_init_with_prob, normal_init, xavier_init, uniform_init, kaiming_init
 from mmcv.ops import DeformConv2d
 
 from mmdet.core import (build_assigner, build_sampler,
@@ -366,22 +366,40 @@ class SparseRepPointsHead(AnchorFreeHead):
         self.cls_out = nn.Linear(self.feat_channels, self.cls_out_channels)
 
     def init_weights(self):
-        normal_init(self.offset_conv, std=0.01)
-        normal_init(self.offset_out, std=0.01)
+        # normal_init(self.offset_conv, std=0.01)
+        # normal_init(self.offset_out, std=0.01)
 
-        normal_init(self.objectness_conv, std=0.01)
-        normal_init(self.objectness_out, std=0.01)
+        # normal_init(self.objectness_conv, std=0.01)
+        # normal_init(self.objectness_out, std=0.01)
 
-        normal_init(self.encode_points_linear, std=0.01)
+        # normal_init(self.encode_points_linear, std=0.01)
+        
+        # for m in self.concat_feat_linears:
+        #     if isinstance(m, nn.Linear):
+        #         normal_init(m, std=0.01)
+        
+        # normal_init(self.reg_linear, std=0.01)
+        # normal_init(self.reg_out, std=0.01)
+
+        # normal_init(self.cls_out, std=0.01)
+        # uniform_init, kaiming_init
+        xavier_init(self.offset_conv)
+        xavier_init(self.offset_out)
+
+        xavier_init(self.objectness_conv)
+        xavier_init(self.objectness_out)
+
+        xavier_init(self.encode_points_linear)
         
         for m in self.concat_feat_linears:
             if isinstance(m, nn.Linear):
-                normal_init(m, std=0.01)
+                xavier_init(m)
         
-        normal_init(self.reg_linear, std=0.01)
-        normal_init(self.reg_out, std=0.01)
+        xavier_init(self.reg_linear)
+        xavier_init(self.reg_out)
 
-        normal_init(self.cls_out, std=0.01)
+        xavier_init(self.cls_out)
+
     
     def forward(self, feats):
         """
