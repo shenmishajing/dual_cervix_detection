@@ -90,3 +90,8 @@ if __name__ == '__main__':
     img_dir = "/data/luochunhua/cervix/cervix_det_data/img"
     print("train")
     stat_mean_std(train_case_id_path, img_dir)
+
+# Acid mean tensor([0.5645, 0.4006, 0.3842])
+# Acid std tensor([0.1650, 0.1539, 0.1572])
+# Iodine mean tensor([0.5271, 0.3497, 0.2480])
+# Iodine std tensor([0.2390, 0.2367, 0.2193])
