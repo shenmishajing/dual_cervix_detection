@@ -1,17 +1,17 @@
 import os 
 import pickle
 import json
+from tqdm import tqdm
+pjoin = os.path.join
 
 src_img_dir = "/data/luochunhua/cervix/cervix_det_data/img"
-src_anno_dir = "/data/luochunhua/cervix/cervix_det_data/anno/total.pkl"
+src_anno_path = "/data/luochunhua/cervix/cervix_det_data/anno/total.pkl"
 src_sil_train_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/train.txt"
 src_sil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/valid.txt"
 src_sil_test_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/test.txt"
 src_sil_total_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/total.txt"
 
-dst_single_train_json_path = ""
-dst_single_valid_json_path = ""
-dst_single_test_json_path = ""
+dst_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/annos/single"
 
 
 def load_pkl_anno(pkl_path):
@@ -35,6 +35,7 @@ def load_case_id_from_txt(txt_path):
 
 
 def convert_single(acid=True):
+    suffix = "acid" if acid else "iodine"
     categories = [
         {
             "id": 0,
@@ -57,7 +58,7 @@ def convert_single(acid=True):
         coco_images = []
         coco_annotations = []
         anno_id = anno_id_start
-        for case_id in case_id_list:
+        for case_id in tqdm(case_id_list):
             image_id = total_case_id_list.index(case_id)
             case_id += "_2" if acid else "_3"
             anno = src_annos[case_id]
@@ -74,32 +75,35 @@ def convert_single(acid=True):
                     continue
 
                 category_id = label_map[x["label"]]
+                x1, y1, x2, y2 = x["bbox"]
                 coco_annotations.append({
                     "segmentation": x["segm"].tolist(),
+                    "area": (x2 - x1) * (y2 - y1) ,
                     "iscrowd": 0,
                     "image_id": image_id,
-                    "bbox": x["bbox"]
+                    "bbox": [x1, y1, x2 - x1, y2 - y1],
+                    "category_id": category_id,
+                    "id": anno_id
                 })
+                anno_id += 1
 
-            
+        return coco_images, coco_annotations, anno_id
 
-            pass
+    anno_id_start = 0
+    train_images, train_annotations, anno_id_start = convert_single_(src_sil_train_path, src_anno_path, anno_id_start)
+    valid_images, valid_annotations, anno_id_start = convert_single_(src_sil_valid_path, src_anno_path, anno_id_start)
+    test_images, test_annotations, anno_id_start = convert_single_(src_sil_test_path, src_anno_path, anno_id_start)
 
-
-        pass
-
-
-
-    train_images = []
-    train_annotations = []
-
-    
-
-    pass
+    for x in ["train", "valid", "test"]:
+        anno = {
+            "categories": categories,
+            "images": eval("{}_images".format(x)),
+            "annotations": eval("{}_annotations".format(x))
+        }
+        json_path = pjoin(dst_single_json_dir, "{}_{}.json".format(x, suffix))
+        save_json_data(anno, json_path)
 
 
 if __name__ == "__main__":
-    
-
-
-    pass
+    convert_single(acid=True)
+    convert_single(acid=False)
