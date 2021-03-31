@@ -1,135 +1,105 @@
-"""
-    原格式
-    img
-    anno
-        {
-            "07444684_2016-06-20_2": {
-                'shape': [600, 733],
-                'annos': [
-                    {
-                        'bbox': [301, 126, 440, 217],
-                        'segm': array([[301, 217],
-                                    [321, 208],
-                                    [351, 200],
-                                    [395, 207],
-                                    [426, 207],
-                                    [440, 204],
-                                    [433, 182],
-                                    [429, 164],
-                                    [416, 167],
-                                    [405, 167],
-                                    [395, 158],
-                                    [387, 145],
-                                    [382, 131],
-                                    [374, 126],
-                                    [360, 131],
-                                    [369, 144],
-                                    [367, 164],
-                                    [358, 178],
-                                    [348, 189],
-                                    [337, 183],
-                                    [320, 171],
-                                    [307, 180],
-                                    [302, 192]]),
-                        'label': 3
-                    },
-                    {
-                        'bbox': [342, 241, 391, 280],
-                        'segm': array([[368, 280],
-                                    [382, 263],
-                                    [391, 250],
-                                    [372, 245],
-                                    [356, 241],
-                                    [342, 256],
-                                    [344, 274]]),
-                        'label': 1
-                    }]}
-            "07444684_2016-06-20_3": {
-                'shape': [600, 733],
-                'annos': [
-                    {
-                        'bbox': [276, 233, 345, 275],
-                        'segm': array([[315, 233],
-                                [291, 245],
-                                [276, 262],
-                                [292, 275],
-                                [325, 275],
-                                [345, 265],
-                                [337, 246]]),
-                        'label': 1
-                    }, 
-                    {
-                        'bbox': [309, 87, 410, 215],
-                        'segm': array([[336, 206],
-                                    [362, 205],
-                                    [390, 210],
-                                    [410, 215],
-                                    [410, 203],
-                                    [398, 183],
-                                    [387, 168],
-                                    [370, 167],
-                                    [358, 154],
-                                    [349, 142],
-                                    [345, 129],
-                                    [341, 110],
-                                    [336,  97],
-                                    [328,  87],
-                                    [315,  90],
-                                    [320, 112],
-                                    [322, 120],
-                                    [328, 123],
-                                    [328, 126],
-                                    [323, 131],
-                                    [325, 148],
-                                    [318, 165],
-                                    [311, 172],
-                                    [309, 186],
-                                    [312, 197],
-                                    [326, 192]]), 
-                        'label': 3}, 
-                    {
-                        'bbox': [232, 160, 287, 221],
-                        'segm': array([[252, 164],
-                                    [241, 180],
-                                    [232, 203],
-                                    [248, 221],
-                                    [270, 210],
-                                    [287, 198],
-                                    [287, 171],
-                                    [277, 160]]),
-                        'label': 3
-                    }]}
-        }
-    
-    case_id 没有碘或醋酸的后缀
-
-
-    目标格式
-    双模态模型可能需要重新构建类
-    - dual 
-
-    直接使用现有的检测方法
-    - single 可以使用coco格式
-        - acid
-        - iodine
-"""
 import os 
 import pickle
 import json
 
+src_img_dir = "/data/luochunhua/cervix/cervix_det_data/img"
+src_anno_dir = "/data/luochunhua/cervix/cervix_det_data/anno/total.pkl"
+src_sil_train_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/train.txt"
+src_sil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/valid.txt"
+src_sil_test_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/test.txt"
+src_sil_total_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/total.txt"
+
+dst_single_train_json_path = ""
+dst_single_valid_json_path = ""
+dst_single_test_json_path = ""
 
 
-def convert_single():
+def load_pkl_anno(pkl_path):
+    with open(pkl_path, "rb") as f:
+        data = pickle.load(f)
+    return data
 
+
+def save_json_data(data, save_path):
+    with open(save_path, "w") as f:
+        json.dump(data, f)
+
+
+def load_case_id_from_txt(txt_path):
+    with open(txt_path, "r") as f:
+        case_id_list = [
+            line.strip() for line in f.readlines() if len(line.strip()) > 0
+        ]
+    case_id_list = list(set(case_id_list))
+    return case_id_list
+
+
+def convert_single(acid=True):
+    categories = [
+        {
+            "id": 0,
+            "name": "lsil"
+        },
+        {
+            "id": 1,
+            "name": "hsil"
+        }
+    ]
+    def convert_single_(case_id_txt_path, anno_path, anno_id_start):
+        label_map = {
+            1: 0, # lsil
+            2: 1  # hsil
+        }
+        total_case_id_list = load_case_id_from_txt(src_sil_total_path)
+        case_id_list = load_case_id_from_txt(case_id_txt_path)
+        src_annos = load_pkl_anno(anno_path)
+
+        coco_images = []
+        coco_annotations = []
+        anno_id = anno_id_start
+        for case_id in case_id_list:
+            image_id = total_case_id_list.index(case_id)
+            case_id += "_2" if acid else "_3"
+            anno = src_annos[case_id]
+
+            coco_images.append({
+                "file_name": case_id + ".jpg",
+                "height": anno["shape"][0],
+                "width": anno["shape"][1],
+                "id": image_id
+            })    
+
+            for x in anno["annos"]:
+                if x["label"] == 3:
+                    continue
+
+                category_id = label_map[x["label"]]
+                coco_annotations.append({
+                    "segmentation": x["segm"].tolist(),
+                    "iscrowd": 0,
+                    "image_id": image_id,
+                    "bbox": x["bbox"]
+                })
+
+            
+
+            pass
+
+
+        pass
+
+
+
+    train_images = []
+    train_annotations = []
+
+    
 
     pass
 
 
 if __name__ == "__main__":
-    src_img_dir = "/data/luochunhua/cervix/cervix_det_data/img"
-    src_anno_dir = "/data/luochunhua/cervix/cervix_det_data/anno/total.pkl"
-    src_sil_train_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/train.txt"
-    src_sil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/valid.txt"
+    
 
 
     pass
