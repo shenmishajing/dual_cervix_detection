@@ -46,7 +46,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         classes=classes,
-        ann_file=data_root + 'annos/single/valid_acid.json',
+        ann_file=data_root + 'annos/single/test_acid.json',
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')
