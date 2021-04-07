@@ -27,6 +27,12 @@ def save_pkl_anno(annos, pkl_path):
         pickle.dump(annos, f)
 
 
+def load_json_anno(json_path):
+    with open(json_path, "r") as f:
+        data = json.load(f)
+    return data
+
+
 def save_json_data(data, save_path):
     with open(save_path, "w") as f:
         json.dump(data, f)
@@ -162,9 +168,29 @@ def check_dual():
     print(anno[:2])
 
 
+def check_single():
+    # 检查一下对应的acid和iodine他们的image_id是否相同
+    acid_train_anno_path = "/data/luochunhua/od/mmdetection/data/cervix/annos/single/train_acid.json"
+    iodine_train_anno_path = "/data/luochunhua/od/mmdetection/data/cervix/annos/single/train_iodine.json"
+
+    acid_train_anno = load_json_anno(acid_train_anno_path)
+    iodine_train_anno = load_json_anno(iodine_train_anno_path)
+
+    acid_train_images = acid_train_anno["images"]
+    iodine_train_images = iodine_train_anno["images"]
+    diff_cnt = 0
+    for i in range(len(acid_train_images)):
+        if acid_train_images[i]["id"] != iodine_train_images[i]["id"] or acid_train_images[i]["file_name"][:-5] != iodine_train_images[i]["file_name"][:-5]:
+            diff_cnt += 1
+        # exit(-1)
+    print(diff_cnt)
+    #! 对应的acid和iodine具有相同的image_id
+
+
 if __name__ == "__main__":
-    # convert_single(acid=True)
-    # convert_single(acid=False)
+    convert_single(acid=True)
+    convert_single(acid=False)
 
     # convert_dual()
-    check_dual()
+    # check_dual()
+    check_single()
