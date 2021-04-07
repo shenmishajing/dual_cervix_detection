@@ -161,6 +161,7 @@ def check_dual():
     anno = load_pkl_anno(test_pkl_path)
     print(anno[:2])
 
+
 if __name__ == "__main__":
     # convert_single(acid=True)
     # convert_single(acid=False)
