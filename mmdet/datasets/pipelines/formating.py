@@ -362,3 +362,81 @@ class WrapFieldsToLists(object):
 
     def __repr__(self):
         return f'{self.__class__.__name__}()'
+
+@PIPELINES.register_module()
+class DualCervixDefaultFormatBundle(object):
+    """Default formatting bundle.
+
+    It simplifies the pipeline of formatting common fields, including "acid_img",
+    "iodine_img", "acid_gt_bboxes" , "iodine_gt_bboxes", "acid_gt_labels" and 
+    "iodine_gt_labels".These fields are formatted as follows.
+
+    - acid_img: (1)transpose, (2)to tensor, (3)to DataContainer (stack=True)
+    - iodine_img: (1)transpose, (2)to tensor, (3)to DataContainer (stack=True)
+    - acid_gt_bboxes: (1)to tensor, (2)to DataContainer
+    - iodine_gt_bboxes: (1)to tensor, (2)to DataContainer
+    - acid_gt_labels: (1)to tensor, (2)to DataContainer
+    - iodine_gt_labels: (1)to tensor, (2)to DataContainer
+    """
+
+    def __call__(self, results):
+        """Call function to transform and format common fields in results.
+
+        Args:
+            results (dict): Result dict contains the data to convert.
+
+        Returns:
+            dict: The result dict contains the data that is formatted with \
+                default bundle.
+        """
+
+        if 'acid_img' in results and "iodine_img" in results:
+            acid_img = results['acid_img']
+            iodine_img = results["iodine_img"]
+            # add default meta keys
+            results = self._add_default_meta_keys(results)
+            if len(acid_img.shape) < 3:
+                acid_img = np.expand_dims(acid_img, -1)
+                iodine_img = np.expand_dims(iodine_img, -1)
+
+            acid_img = np.ascontiguousarray(acid_img.transpose(2, 0, 1))
+            results['acid_img'] = DC(to_tensor(acid_img), stack=True)
+            iodine_img = np.ascontiguousarray(iodine_img.transpose(2, 0, 1))
+            results['iodine_img'] = DC(to_tensor(iodine_img), stack=True)
+
+
+        for key in ['acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']:
+            if key not in results:
+                continue
+            results[key] = DC(to_tensor(results[key]))
+        return results
+
+    def _add_default_meta_keys(self, results):
+        """Add default meta keys.
+
+        We set default meta keys including `pad_shape`, `scale_factor` and
+        `img_norm_cfg` to avoid the case where no `Resize`, `Normalize` and
+        `Pad` are implemented during the whole pipeline.
+
+        Args:
+            results (dict): Result dict contains the data to convert.
+
+        Returns:
+            results (dict): Updated result dict contains the data to convert.
+        """
+        img = results['acid_img']
+        results.setdefault('pad_shape', img.shape)
+        results.setdefault('scale_factor', 1.0)
+        num_channels = 1 if len(img.shape) < 3 else img.shape[2]
+        results.setdefault(
+            'img_norm_cfg',
+            dict(
+                acid_mean=np.zeros(num_channels, dtype=np.float32),
+                acid_std=np.ones(num_channels, dtype=np.float32),
+                iodine_mean=np.zeros(num_channels, dtype=np.float32),
+                iodine_std=np.ones(num_channels, dtype=np.float32),                
+                to_rgb=False))
+        return results
+
+    def __repr__(self):
+        return self.__class__.__name__

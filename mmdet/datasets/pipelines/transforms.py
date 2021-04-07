@@ -1802,3 +1802,53 @@ class CutOut(object):
                      else f'cutout_shape={self.candidates}, ')
         repr_str += f'fill_in={self.fill_in})'
         return repr_str
+
+
+@PIPELINES.register_module()
+class DualCervixNormalize(object):
+    """Normalize the acid cervix image and iodine cervix image.
+
+    Added key is "img_norm_cfg".
+
+    Args:
+        acid_mean (sequence): Mean values of 3 channels.
+        acid_std (sequence): Std values of 3 channels.
+        iodine_mean (sequence): Mean values of 3 channels.
+        iodine_std (sequence): Std values of 3 channels.
+        to_rgb (bool): Whether to convert the image from BGR to RGB,
+            default is true.
+    """
+
+    def __init__(self, acid_mean, acid_std, iodine_mean, iodine_std, to_rgb=True):
+        self.acid_mean = np.array(acid_mean, dtype=np.float32)
+        self.acid_std = np.array(acid_std, dtype=np.float32)
+        self.iodine_mean = np.array(iodine_mean, dtype=np.float32)
+        self.iodine_std = np.array(iodine_std, dtype=np.float32)
+        self.to_rgb = to_rgb
+
+    def __call__(self, results):
+        """Call function to normalize acid cervix image and iodine cervix image.
+
+        Args:
+            results (dict): Result dict from loading pipeline.
+
+        Returns:
+            dict: Normalized results, 'img_norm_cfg' key is added into
+                result dict.
+        """
+       
+        results["acid_img"] = mmcv.imnormalize(results["acid_img"], self.acid_mean, self.acid_std,
+                                            self.to_rgb)
+        results["iodine_img"] = mmcv.imnormalize(results["iodine_img"], self.iodine_mean, self.iodine_std,
+                                            self.to_rgb)
+
+        results['img_norm_cfg'] = dict(
+            acid_mean=self.acid_mean, acid_std=self.acid_std,
+            iodine_mean=self.iodine_mean, iodine_std=self.iodine_std,
+            to_rgb=self.to_rgb)
+        return results
+
+    def __repr__(self):
+        repr_str = self.__class__.__name__
+        repr_str += f'(acid_mean={self.acid_mean}, acid_std={self.acid_std}, iodine_mean={self.iodine_mean}, iodine_std={self.iodine_std},to_rgb={self.to_rgb})'
+        return repr_str

@@ -456,3 +456,120 @@ class FilterAnnotations(object):
                 if key in results:
                     results[key] = results[key][keep]
             return results
+
+
+@PIPELINES.register_module()
+class LoadDualCervixImageFromFile(LoadImageFromFile):
+    """Load an acid cervix image and iodine cervix image from file.
+
+    Required keys are "img_info" (a dict that must contain the
+    key "filename" (a list contasin acid_filename, iodine_filename)). 
+    Added or updated keys are "filename", "acid_img", "iodine_img", "img_shape",
+    "ori_shape" (same as `img_shape`), "pad_shape" (same as `img_shape`),
+    "scale_factor" (1.0) and "img_norm_cfg" (means=0 and stds=1).
+
+    Args:
+        to_float32 (bool): Whether to convert the loaded image to a float32
+            numpy array. If set to False, the loaded image is an uint8 array.
+            Defaults to False.
+        color_type (str): The flag argument for :func:`mmcv.imfrombytes`.
+            Defaults to 'color'.
+        file_client_args (dict): Arguments to instantiate a FileClient.
+            See :class:`mmcv.fileio.FileClient` for details.
+            Defaults to ``dict(backend='disk')``.
+    """
+
+    def __call__(self, results):
+        """Call functions to load image and get image meta information.
+
+        Args:
+            results (dict): Result dict from :obj:`mmdet.CustomDataset`.
+
+        Returns:
+            dict: The dict contains loaded image and meta information.
+        """
+
+        if self.file_client is None:
+            self.file_client = mmcv.FileClient(**self.file_client_args)
+        
+        filename = results['img_info']['filename']
+        acid_filename, iodine_filename = filename
+        if results["img_prefix"] is not None:
+            acid_filename = osp.join(results["img_prefix"], acid_filename)
+            iodine_filename = osp.join(results["img_prefix"], iodine_filename)
+
+        acid_img_bytes = self.file_client.get(acid_filename)
+        acid_img = mmcv.imfrombytes(acid_img_bytes, flag=self.color_type)
+
+        iodine_img_bytes = self.file_client.get(iodine_filename)
+        iodine_img = mmcv.imfrombytes(iodine_img_bytes, flag=self.color_type)
+        
+        assert acid_img.shape == iodine_img.shape, \
+            "acid image shape must equal to iodine image shape. {} != {}".format(acid_img.shape, iodine_img.shape)
+
+        if self.to_float32:
+            acid_img = acid_img.astype(np.float32)
+            iodine_img = iodine_img.astype(np.float32)
+        
+        results['filename'] = filename
+        results['ori_filename'] = results['img_info']['filename']
+        results['acid_img'] = acid_img
+        results['iodine_img'] = iodine_img
+        results['img_shape'] = acid_img.shape
+        results['ori_shape'] = acid_img.shape
+        results['img_fields'] = ['acid_img', 'iodine_img']
+        return results
+
+
+@PIPELINES.register_module()
+class LoadDualCervixAnnotations(LoadAnnotations):
+
+    def _load_bboxes(self, results):
+        """Private function to load bounding box annotations.
+
+        Args:
+            results (dict): Result dict from :obj:`mmdet.CustomDataset`.
+
+        Returns:
+            dict: The dict contains loaded bounding box annotations for acid
+                cervix image and iodine cervix image.
+        """
+
+        ann_info = results['ann_info']
+        results['acid_gt_bboxes'] = ann_info['bboxes'][0].copy()
+        results['iodine_gt_bboxes'] = ann_info['bboxes'][1].copy()
+        results['bbox_fields'] = ['acid_gt_bboxes', 'iodine_gt_bboxes']
+        return results
+
+    def _load_labels(self, results):
+        """Private function to load label annotations.
+
+        Args:
+            results (dict): Result dict from :obj:`mmdet.CustomDataset`.
+
+        Returns:
+            dict: The dict contains loaded label annotations for acid 
+                cervix image and iodine cervix image.
+        """
+
+        results['acid_gt_labels'] = results['ann_info']['labels'][0].copy()
+        results['iodine_gt_labels'] = results['ann_info']['labels'][1].copy()
+        results["label_fields"] = ['acid_gt_labels', 'iodine_gt_labels']
+        return results
+
+    def __call__(self, results):
+        """Call function to load multiple types annotations.
+
+        Args:
+            results (dict): Result dict from :obj:`mmdet.CustomDataset`.
+
+        Returns:
+            dict: The dict contains loaded bounding box, label, annotations.
+        """
+        if self.with_bbox:
+            results = self._load_bboxes(results)
+            if results is None:
+                return None
+        if self.with_label:
+            results = self._load_labels(results)
+        return results
