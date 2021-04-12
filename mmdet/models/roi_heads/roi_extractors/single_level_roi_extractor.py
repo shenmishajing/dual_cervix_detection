@@ -97,3 +97,35 @@ class SingleRoIExtractor(BaseRoIExtractor):
                     x.view(-1)[0]
                     for x in self.parameters()) * 0. + feats[i].sum() * 0.
         return roi_feats
+
+
+@ROI_EXTRACTORS.register_module()
+class SingleDeformRoIExtractor(SingleRoIExtractor):
+    #! ignore feature of onnx
+    """ 
+    reference: https://github.com/Sense-X/TSD/blob/master/mmdet/models/bbox_heads/tsd_bbox_head.py  line (258 - 286)
+    """
+
+    @force_fp32(apply_to=('feat', ), out_fp16=True)
+    def forward(self, feats, rois, offsets=None):
+        out_size = self.roi_layers[0].output_size # _pair(7)
+        num_levels = len(feats)
+
+        roi_feats = feats[0].new_zeros(
+            rois.size(0), self.out_channels, *out_size)
+        
+        if num_levels == 1:
+            if len(rois) == 0:
+                return roi_feats
+            return self.roi_layers[0](feats[0], rois, offsets)
+
+        target_lvls = self.map_roi_levels(rois, num_levels)
+        for i in range(num_levels):
+            inds = target_lvls == i
+            if inds.any():
+                offset = offsets[inds]
+                rois_ = rois[inds]
+                roi_feats_t = self.roi_layers[i](feats[i], rois_, offset.to(dtype=rois_.dtype))
+                roi_feats[inds] = roi_feats_t.to(dtype=feats[i].dtype)
+
+        return roi_feats
