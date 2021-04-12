@@ -10,7 +10,7 @@ train_pipeline = [
     dict(type='LoadDualCervixAnnotations', with_bbox=True),
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
-    # dict(type='DualCervixNormalize', **img_norm_cfg),
+    dict(type='DualCervixNormalize', **img_norm_cfg),
     dict(type='Pad', size_divisor=32),
     dict(type='DualCervixDefaultFormatBundle'),
     dict(type='Collect', keys=['acid_img', 'iodine_img', 'acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']),
