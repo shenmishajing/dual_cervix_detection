@@ -169,7 +169,6 @@ class DualCervixDataset(CustomDataset):
         gt_bboxes = []
         gt_labels = []
         gt_bboxes_ignore = []
-        print("ann_info", ann_info)
         for i, ann in enumerate(ann_info):
             if ann.get('ignore', False):
                 continue
