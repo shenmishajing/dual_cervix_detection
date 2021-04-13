@@ -1,11 +1,12 @@
 _base_ = [
     '../../_base_/schedules/schedule_2x.py',
     '../../_base_/default_runtime.py',
-    './dual_base.py'
+    './dual_base_iodine.py'
 ]
 model = dict(
     type='FasterPrimAuxDetector',
     pretrained='torchvision://resnet50',
+    aug_acid=False,
     
     prim_backbone=dict(
         type='ResNet',
@@ -58,7 +59,6 @@ model = dict(
 
     roi_head=dict(
         type='DualCervixPrimAuxRoiHead',
-
         attention_cfg=dict(
             in_channels=256, 
             out_channels=256,
@@ -86,7 +86,7 @@ model = dict(
             
         bbox_head=dict(
             type='Shared2FCBBoxHead',
-            in_channels=256,
+            in_channels=512, #! 256 + 256
             fc_out_channels=1024,
             roi_feat_size=7,
             num_classes=2,

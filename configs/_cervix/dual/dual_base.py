@@ -16,7 +16,7 @@ train_pipeline = [
     dict(type='Collect', keys=['acid_img', 'iodine_img', 'acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']),
 ]
 test_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type='LoadDualCervixImageFromFile'),
     dict(
         type='MultiScaleFlipAug',
         img_scale=(1333, 800),
@@ -31,7 +31,7 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu=2,
+    samples_per_gpu=3,
     workers_per_gpu=2,
     train=dict(
         type=dataset_type,
