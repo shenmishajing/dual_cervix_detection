@@ -255,14 +255,14 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def simple_test_bboxes(self, 
-                           prims_feats, aux_feats,
+                           prim_feats, aux_feats,
                            img_metas, 
                            proposals, 
                            rcnn_test_cfg,
                            rescale=False):
         """Test only det bboxes without augmentation."""
         prim_feats = self.attention(prim_feats, aux_feats)
-        rois = bbox2roi(proposal_list)
+        rois = bbox2roi(proposals)
         bbox_results = self._bbox_forward(prim_feats, aux_feats, rois)
         img_shapes = tuple(meta['img_shape'] for meta in img_metas)
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)

@@ -126,17 +126,9 @@ class FasterPrimAuxDetector(TwoStageDetector):
         if self.aug_acid:
             prim_imgs = acid_imgs
             aux_imgs = iodine_imgs
-            gt_bboxes = acid_gt_bboxes
-            gt_labels = acid_gt_labels
-            gt_bboxes_ignore = acid_gt_bboxes_ignore
-            proposal = acid_proposals
         else:
             prim_imgs = iodine_imgs
             aux_imgs = acid_imgs
-            gt_bboxes = iodine_gt_bboxes
-            gt_labels = iodine_gt_labels
-            gt_bboxes_ignore = iodine_gt_bboxes_ignore
-            proposal = iodine_proposals
 
         if num_augs == 1:
             if 'proposals' in kwargs:
