@@ -93,7 +93,9 @@ class ProposalOffset(nn.Module):
 
 
     def forward(self, x):
-        x = self.offset(x)
+        x = x.view(-1, self.roi_feat_area * self.in_channels)
+        for m in self.offset:
+            x = m(x)
 
         return x
 
@@ -208,9 +210,9 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             sampling_results.append(sampling_result)
 
         losses = dict()
-        bbox_results = self._bbox_forward_train(prim_feats, sampling_results,
-                                                    gt_bboxes, gt_labels,
-                                                    img_metas)
+        bbox_results = self._bbox_forward_train(prim_feats, aux_feats, 
+                                                sampling_results,
+                                                gt_bboxes, gt_labels)
         losses.update(bbox_results['loss_bbox'])
 
         return losses
@@ -224,7 +226,7 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         offset = self.proposalOffset(prim_bbox_feats)
         # offfset reshape [num_img * num_proposal, 2] -> [num_img * num_proposal, 2, out_size, out_size] 
         n = rois.shape[0]
-        out_size = prim_bboxes_feats.shape[-1]
+        out_size = prim_bbox_feats.shape[-1]
         offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
         aux_bbox_feats = self.aux_bbox_roi_extractor(aux_feats, rois, offset)
 
