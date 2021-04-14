@@ -12,8 +12,14 @@ src_sil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/val
 src_sil_test_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/test.txt"
 src_sil_total_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/total.txt"
 
-dst_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/annos/single"
-dst_dual_pkl_dir = "/data/luochunhua/od/mmdetection/data/cervix/annos/dual"
+dst_sil_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/sil_annos"
+
+src_hsil_train_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/train.txt"
+src_hsil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/valid.txt"
+src_hsil_test_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/test.txt"
+src_hsil_total_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/total.txt"
+
+dst_hsil_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/hsil_anno"
 
 
 def load_pkl_anno(pkl_path):
@@ -47,8 +53,21 @@ def load_case_id_from_txt(txt_path):
     return case_id_list
 
 
-def convert_single(acid=True):
+def convert_single(acid=True, sil=True):
     suffix = "acid" if acid else "iodine"
+    if sil:
+        total_path = src_sil_total_path
+        train_path = src_sil_train_path
+        valid_path = src_sil_valid_path
+        test_path = src_sil_test_path
+        dst_json_dir = dst_sil_single_json_dir
+    else:
+        total_path = src_hsil_total_path
+        train_path = src_hsil_train_path
+        valid_path = src_hsil_valid_path
+        test_path = src_hsil_test_path
+        dst_json_dir = dst_hsil_single_json_dir
+
     categories = [
         {
             "id": 0,
@@ -64,7 +83,7 @@ def convert_single(acid=True):
             1: 0, # lsil
             2: 1  # hsil
         }
-        total_case_id_list = load_case_id_from_txt(src_sil_total_path)
+        total_case_id_list = load_case_id_from_txt(total_path)
         case_id_list = load_case_id_from_txt(case_id_txt_path)
         src_annos = load_pkl_anno(anno_path)
 
@@ -103,9 +122,9 @@ def convert_single(acid=True):
         return coco_images, coco_annotations, anno_id
 
     anno_id_start = 0
-    train_images, train_annotations, anno_id_start = convert_single_(src_sil_train_path, src_anno_path, anno_id_start)
-    valid_images, valid_annotations, anno_id_start = convert_single_(src_sil_valid_path, src_anno_path, anno_id_start)
-    test_images, test_annotations, anno_id_start = convert_single_(src_sil_test_path, src_anno_path, anno_id_start)
+    train_images, train_annotations, anno_id_start = convert_single_(train_path, src_anno_path, anno_id_start)
+    valid_images, valid_annotations, anno_id_start = convert_single_(valid_path, src_anno_path, anno_id_start)
+    test_images, test_annotations, anno_id_start = convert_single_(test_path, src_anno_path, anno_id_start)
 
     for x in ["train", "valid", "test"]:
         anno = {
@@ -113,7 +132,7 @@ def convert_single(acid=True):
             "images": eval("{}_images".format(x)),
             "annotations": eval("{}_annotations".format(x))
         }
-        json_path = pjoin(dst_single_json_dir, "{}_{}.json".format(x, suffix))
+        json_path = pjoin(dst_json_dir, "{}_{}.json".format(x, suffix))
         save_json_data(anno, json_path)
 
 
@@ -188,9 +207,9 @@ def check_single():
 
 
 if __name__ == "__main__":
-    convert_single(acid=True)
-    convert_single(acid=False)
+    # convert_single(acid=True, sil=True)
+    # convert_single(acid=False, sil==True)
+    convert_single(acid=True, sil=False)
+    convert_single(acid=False, sil=False)
 
-    # convert_dual()
-    # check_dual()
     check_single()
