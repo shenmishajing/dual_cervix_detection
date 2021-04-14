@@ -494,8 +494,8 @@ def split_hsil_data():
     save_case_id_to_txt(hsil_case_id, hsil_txt_path)
 
     seed = 1
-    train_case_id, valid_test_case_id  = train_test_split(hsil_case_id, test_size=0.2, random_state=seed)
-    valid_case_id, test_case_id = train_test_split(valid_test_case_id, test_size=0.5, random_state=seed)
+    train_case_id, valid_test_case_id  = train_test_split(hsil_case_id, test_size=0.3, random_state=seed)
+    valid_case_id, test_case_id = train_test_split(valid_test_case_id, test_size=0.33, random_state=seed)
 
     save_case_id_to_txt(train_case_id, train_txt_path)
     save_case_id_to_txt(valid_case_id, valid_txt_path)
@@ -571,7 +571,6 @@ def check_img_shape():
 
     pass 
 
-# paper 10165 project 3793
 if __name__ == "__main__":
     move_project_data()
     move_paper_data()
@@ -581,7 +580,7 @@ if __name__ == "__main__":
     # show_anno_format()
     # show_paper_format()
     split_sil_data()
-    # split_hsil_data()
+    split_hsil_data()
 
 
 # paper 10122 project 3791
