@@ -1,6 +1,6 @@
 dataset_type = 'CocoDataset'
 data_root = 'data/cervix/'
-classes = ("lsil", "hsil")
+classes = ("hsil", )
 img_norm_cfg = dict(
     mean=[133.2375,  87.8985,  60.9195], std=[61.149, 59.568, 54.876], to_rgb=True)
 train_pipeline = [
@@ -34,19 +34,19 @@ data = dict(
     train=dict(
         type=dataset_type,
         classes=classes,
-        ann_file=data_root + 'hsil_anno/train_iodine.json',
+        ann_file=data_root + 'hsil_annos/train_iodine.json',
         img_prefix=data_root + 'img/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         classes=classes,
-        ann_file=data_root + 'hsil_anno/valid_iodine.json',
+        ann_file=data_root + 'hsil_annos/valid_iodine.json',
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         classes=classes,
-        ann_file=data_root + 'hsil_anno/test_iodine.json',
+        ann_file=data_root + 'hsil_annos/test_iodine.json',
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')

@@ -1,6 +1,6 @@
 dataset_type = 'DualCervixDataset'
 data_root = 'data/cervix/'
-classes = ("lsil", "hsil")
+classes = ("hsil", )
 img_norm_cfg = dict(
     acid_mean=[143.9475, 102.153, 97.971], acid_std=[42.075, 39.2445, 40.086],
     iodine_mean=[134.4105, 89.1735, 63.24], iodine_std=[60.945, 60.3585, 55.9215],

@@ -1,6 +1,6 @@
 dataset_type = 'CocoDataset'
 data_root = 'data/cervix/'
-classes = ("lsil", "hsil")
+classes = ("hsil", )
 img_norm_cfg = dict(
     mean=[143.463 , 102.0255,  97.5375], std=[42.636 , 39.9075, 40.7235], to_rgb=True)
 train_pipeline = [
