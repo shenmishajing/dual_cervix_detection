@@ -1,7 +1,7 @@
 _base_ = [
-    './acid_base.py',
-    '../../_base_/schedules/schedule_2x.py',
-    '../../_base_/default_runtime.py'
+    './iodine_base.py',
+    '../../../_base_/schedules/schedule_2x.py',
+    '../../../_base_/default_runtime.py'
 ]
 model = dict(
     type='RepPointsDetector',

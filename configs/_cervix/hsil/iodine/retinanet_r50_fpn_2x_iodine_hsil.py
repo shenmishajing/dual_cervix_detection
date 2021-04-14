@@ -1,7 +1,7 @@
 _base_ = [
     './iodine_base.py',
-    '../../_base_/schedules/schedule_2x.py',
-    '../../_base_/default_runtime.py'
+    '../../../_base_/schedules/schedule_2x.py',
+    '../../../_base_/default_runtime.py'
 ]
 # model settings
 model = dict(

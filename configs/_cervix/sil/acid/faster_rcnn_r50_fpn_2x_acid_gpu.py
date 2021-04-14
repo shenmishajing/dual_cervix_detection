@@ -1,7 +1,7 @@
 _base_ = [
-    '../../_base_/schedules/schedule_2x.py', 
-    '../../_base_/default_runtime.py',
-    './iodine_base.py'
+    '../../../_base_/schedules/schedule_2x.py', 
+    '../../../_base_/default_runtime.py',
+    './acid_base.py'
 ]
 model = dict(
     type='FasterRCNN',
@@ -99,7 +99,7 @@ train_cfg = dict(
             add_gt_as_proposals=True),
         pos_weight=-1,
         debug=False))
-test_cfg = dict(
+test_cfg=dict(
     rpn=dict(
         nms_across_levels=False,
         nms_pre=1000,
