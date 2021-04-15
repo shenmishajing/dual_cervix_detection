@@ -27,7 +27,7 @@ def load_pkl_anno(pkl_path):
 
 
 def check():
-
+    # 检查是不是都是由sil的标签
     def has_sil(anno):
         if len(anno) == 0:
             return False

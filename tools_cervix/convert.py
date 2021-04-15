@@ -19,7 +19,7 @@ src_hsil_valid_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/v
 src_hsil_test_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/test.txt"
 src_hsil_total_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/total.txt"
 
-dst_hsil_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/hsil_anno"
+dst_hsil_single_json_dir = "/data/luochunhua/od/mmdetection/data/cervix/hsil_annos"
 
 
 def load_pkl_anno(pkl_path):
