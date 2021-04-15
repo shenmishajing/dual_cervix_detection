@@ -50,6 +50,7 @@ class DualCervixDataset(CustomDataset):
     CLASSES = ('lsil', 'hsil')
 
     def __init__(self,
+                prim,
                 acid_ann_file,
                 iodine_ann_file,
                 pipeline,
@@ -59,6 +60,10 @@ class DualCervixDataset(CustomDataset):
                 proposal_file=None,                
                 test_mode=False,
                 filter_empty_gt=True):
+        
+        assert prim in ('acid', 'iodine', None)
+
+        self.prim = prim
         self.acid_ann_file = acid_ann_file
         self.iodine_ann_file = iodine_ann_file
         self.data_root = data_root
@@ -418,28 +423,53 @@ class DualCervixDataset(CustomDataset):
                  iou_thrs=None,
                  metric_items=None):
         # 检测的结果(acid_result, iodine_result)
-        acid_metric = self.evaluate_single(results[0], 
-                            acid=True,
-                            metric=metric, 
-                            logger=logger,
-                            jsonfile_prefix=jsonfile_prefix,
-                            classwise=classwise,
-                            proposal_nums=proposal_nums,
-                            iou_thrs=iou_thrs,
-                            metric_items=metric_items)
+        if self.prim == "acid":
+            acid_metric = self.evaluate_single(results, 
+                                acid=True,
+                                metric=metric, 
+                                logger=logger,
+                                jsonfile_prefix=jsonfile_prefix,
+                                classwise=classwise,
+                                proposal_nums=proposal_nums,
+                                iou_thrs=iou_thrs,
+                                metric_items=metric_items)
+            ret = {
+                "acid": acid_metric}
+        elif self.prim == "iodine":
+            iodine_metric = self.evaluate_single(results, 
+                                acid=False,
+                                metric=metric, 
+                                logger=logger,
+                                jsonfile_prefix=jsonfile_prefix,
+                                classwise=classwise,
+                                proposal_nums=proposal_nums,
+                                iou_thrs=iou_thrs,
+                                metric_items=metric_items)
+            ret = {
+                "iodine": iodine_metric}
+        else:
+            acid_metric = self.evaluate_single(results[0], 
+                                acid=True,
+                                metric=metric, 
+                                logger=logger,
+                                jsonfile_prefix=jsonfile_prefix,
+                                classwise=classwise,
+                                proposal_nums=proposal_nums,
+                                iou_thrs=iou_thrs,
+                                metric_items=metric_items)
 
-        iodine_metric = self.evaluate_single(results[1], 
-                            acid=False,
-                            metric=metric, 
-                            logger=logger,
-                            jsonfile_prefix=jsonfile_prefix,
-                            classwise=classwise,
-                            proposal_nums=proposal_nums,
-                            iou_thrs=iou_thrs,
-                            metric_items=metric_items)
-        ret = {
-            "acid": acid_metric,
-            "iodine": iodine_metric}
+            iodine_metric = self.evaluate_single(results[1], 
+                                acid=False,
+                                metric=metric, 
+                                logger=logger,
+                                jsonfile_prefix=jsonfile_prefix,
+                                classwise=classwise,
+                                proposal_nums=proposal_nums,
+                                iou_thrs=iou_thrs,
+                                metric_items=metric_items)
+            ret = {
+                "acid": acid_metric,
+                "iodine": iodine_metric}
         
         return ret
 
