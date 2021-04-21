@@ -55,6 +55,7 @@ class DualCervixDataset(CustomDataset):
                 iodine_ann_file,
                 pipeline,
                 classes,
+                dual_det=False,
                 data_root=None,
                 img_prefix='',
                 proposal_file=None,                
@@ -64,6 +65,7 @@ class DualCervixDataset(CustomDataset):
         assert prim in ('acid', 'iodine', None)
 
         self.prim = prim
+        self.dual_det = dual_det
         self.acid_ann_file = acid_ann_file
         self.iodine_ann_file = iodine_ann_file
         self.data_root = data_root
@@ -422,34 +424,23 @@ class DualCervixDataset(CustomDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=None,
                  metric_items=None):
-        # 检测的结果(acid_result, iodine_result)
-        if self.prim == "acid":
-            acid_metric = self.evaluate_single(results, 
-                                acid=True,
-                                metric=metric, 
-                                logger=logger,
-                                jsonfile_prefix=jsonfile_prefix,
-                                classwise=classwise,
-                                proposal_nums=proposal_nums,
-                                iou_thrs=iou_thrs,
-                                metric_items=metric_items)
-            ret = {
-                "acid": acid_metric}
-        elif self.prim == "iodine":
-            iodine_metric = self.evaluate_single(results, 
-                                acid=False,
-                                metric=metric, 
-                                logger=logger,
-                                jsonfile_prefix=jsonfile_prefix,
-                                classwise=classwise,
-                                proposal_nums=proposal_nums,
-                                iou_thrs=iou_thrs,
-                                metric_items=metric_items)
-            ret = {
-                "iodine": iodine_metric}
-        else:
-            acid_metric = self.evaluate_single(results[0], 
-                                acid=True,
+        if self.dual_det:
+            #! 双检测的结果[prim_result, aux_result, prim_result, aux_result, ....]
+            prim_results = []
+            aux_results = []
+            for i in range(len(results) // 2):
+                prim_results.append(results[2 * i])
+                aux_results.append(results[2 * i + 1])
+
+            if self.prim == "acid":
+                prim = "acid"
+                aux = "iodine"
+            else:
+                prim = "iodine"
+                aux = "acid"               
+
+            prim_metric = self.evaluate_single(prim_results, 
+                                acid= self.prim == "acid",
                                 metric=metric, 
                                 logger=logger,
                                 jsonfile_prefix=jsonfile_prefix,
@@ -458,8 +449,8 @@ class DualCervixDataset(CustomDataset):
                                 iou_thrs=iou_thrs,
                                 metric_items=metric_items)
 
-            iodine_metric = self.evaluate_single(results[1], 
-                                acid=False,
+            aux_metric = self.evaluate_single(aux_results, 
+                                acid= self.prim != "acid",
                                 metric=metric, 
                                 logger=logger,
                                 jsonfile_prefix=jsonfile_prefix,
@@ -468,8 +459,36 @@ class DualCervixDataset(CustomDataset):
                                 iou_thrs=iou_thrs,
                                 metric_items=metric_items)
             ret = {
-                "acid": acid_metric,
-                "iodine": iodine_metric}
+                "prim({})".format(prim): prim_metric,
+                "aux({})".format(aux): aux_metric
+                }
+            
+        else:
+            if self.prim == "acid":
+                prim_metric = self.evaluate_single(results, 
+                                    acid=True,
+                                    metric=metric, 
+                                    logger=logger,
+                                    jsonfile_prefix=jsonfile_prefix,
+                                    classwise=classwise,
+                                    proposal_nums=proposal_nums,
+                                    iou_thrs=iou_thrs,
+                                    metric_items=metric_items)
+                ret = {
+                    "prim(acid)": prim_metric}
+            else:
+                iodine_metric = self.evaluate_single(results, 
+                                    acid=False,
+                                    metric=metric, 
+                                    logger=logger,
+                                    jsonfile_prefix=jsonfile_prefix,
+                                    classwise=classwise,
+                                    proposal_nums=proposal_nums,
+                                    iou_thrs=iou_thrs,
+                                    metric_items=metric_items)
+                ret = {
+                    "prim(iodine)": iodine_metric}
+            
         
         return ret
 
