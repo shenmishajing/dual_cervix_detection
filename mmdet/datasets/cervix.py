@@ -429,15 +429,8 @@ class DualCervixDataset(CustomDataset):
             prim_results = []
             aux_results = []
             for i in range(len(results) // 2):
-                prim_results.append(results[2 * i])
-                aux_results.append(results[2 * i + 1])
-
-            if self.prim == "acid":
-                prim = "acid"
-                aux = "iodine"
-            else:
-                prim = "iodine"
-                aux = "acid"               
+                prim_results.extend(results[2 * i])
+                aux_results.extend(results[2 * i + 1])              
 
             prim_metric = self.evaluate_single(prim_results, 
                                 acid= self.prim == "acid",
@@ -458,9 +451,21 @@ class DualCervixDataset(CustomDataset):
                                 proposal_nums=proposal_nums,
                                 iou_thrs=iou_thrs,
                                 metric_items=metric_items)
-            ret = {
-                "prim({})".format(prim): prim_metric,
-                "aux({})".format(aux): aux_metric
+
+            if self.prim == "acid":
+                ret = {
+                    "prim(acid})": prim_metric,
+                    "aux(iodine)": aux_metric
+                }
+            elif self.prim == "iodine":
+                ret = {
+                    "prim(iodine})": prim_metric,
+                    "aux(acid)": aux_metric
+                }
+            else:
+                ret = {
+                    "prim1(acid)".format(prim): prim_metric,
+                    "prim2(iodine)".format(aux): aux_metric
                 }
             
         else:
@@ -476,7 +481,7 @@ class DualCervixDataset(CustomDataset):
                                     metric_items=metric_items)
                 ret = {
                     "prim(acid)": prim_metric}
-            else:
+            elif self.prim == "iodine":
                 iodine_metric = self.evaluate_single(results, 
                                     acid=False,
                                     metric=metric, 
@@ -488,7 +493,8 @@ class DualCervixDataset(CustomDataset):
                                     metric_items=metric_items)
                 ret = {
                     "prim(iodine)": iodine_metric}
-            
+            else:
+                raise "prim == None is invalid when dual_det = False"
         
         return ret
 
