@@ -227,7 +227,7 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         """
         if self.attention:
             prim_feats = self.attention(prim_feats, aux_feats)
-            
+
         num_imgs = len(img_metas)
         if gt_bboxes_ignore is None:
             gt_bboxes_ignore = [None for _ in range(num_imgs)]
@@ -361,7 +361,7 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
 @HEADS.register_module()
-class DualCervixPrimAuxDualLossRoiHead(BaseRoIHead, BBoxTestMixin):
+class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def __init__(self, 
