@@ -399,7 +399,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                        prim_bbox_head, aux_bbox_head):
         self.prim_bbox_roi_extractor = build_roi_extractor(prim_bbox_roi_extractor)
         self.aux_bbox_roi_extractor = build_roi_extractor(aux_bbox_roi_extractor)
-        self.bbox_droi_extractor = build_roi_extractor(bridge_bbox_droi_extractor)
+        self.bridge_bbox_droi_extractor = build_roi_extractor(bridge_bbox_droi_extractor)
         self.prim_bbox_head = build_head(prim_bbox_head)
         self.aux_bbox_head = build_head(aux_bbox_head)
 
@@ -448,11 +448,11 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         if aux_gt_bboxes_ignore is None:
             aux_gt_bboxes_ignore = [None for _ in range(num_imgs)]
 
-        axu_sampling_results = []
+        aux_sampling_results = []
         for i in range(num_imgs):
             aux_assign_result = self.bbox_assigner.assign(
                 aux_proposal_list[i], aux_gt_bboxes[i], aux_gt_bboxes_ignore[i], aux_gt_labels[i])
-            aux_sampling_result = self.bbox_sampler(
+            aux_sampling_result = self.bbox_sampler.sample(
                 aux_assign_result,
                 aux_proposal_list[i],
                 aux_gt_bboxes[i],
@@ -467,8 +467,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         prim_sampling_results = []
         for i in range(num_imgs):
             prim_assign_result = self.bbox_assigner.assign(
-                prim_proposal_list[i], prim_gt_bboxes[i], prim_gt_bboxes_ignore[i],
-                prim_gt_labels[i])
+                prim_proposal_list[i], prim_gt_bboxes[i], prim_gt_bboxes_ignore[i], prim_gt_labels[i])
             prim_sampling_result = self.bbox_sampler.sample(
                 prim_assign_result,
                 prim_proposal_list[i],
@@ -496,11 +495,11 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         prim_bbox_feats = self.prim_bbox_roi_extractor(
             prim_feats[:self.prim_bbox_roi_extractor.num_inputs], prim_rois)
         offset = self.proposalOffset(prim_bbox_feats)
-        n = rois.shape[0]
+        n = prim_rois.shape[0]
 
         out_size = prim_bbox_feats.shape[-1]
         offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
-        bridge_bbox_feats = self.bbox_droi_extractor(aux_feats, prim_rois, offset)
+        bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats, prim_rois, offset)
         prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)
         prim_cls_score, prim_bbox_pred = self.prim_bbox_head(prim_bbox_feats)
 
@@ -546,8 +545,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         if self.attention:
             prim_feats = self.attention(prim_feats, aux_feats)
 
-        prim_rois = bbox2roi([res.bboxes for res in prim_sampling_results])
-        aux_rois = bbox2roi([res.bboxes for res in aux_sampling_results])
+        prim_rois = bbox2roi(prim_proposals)
+        aux_rois = bbox2roi(aux_proposals)
         bbox_results = self._bbox_forward(prim_feats, aux_feats, prim_rois, aux_rois)
         img_shapes = tuple(meta['img_shape'] for meta in img_metas)
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
