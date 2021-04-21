@@ -174,6 +174,7 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
                  test_cfg=None,
                  pretrained=None):
         super(TwoStageDetector, self).__init__()
+        self.dual_det = True
         self.prim_backbone = build_backbone(prim_backbone)
         self.aux_backbone = build_backbone(aux_backbone)
 
@@ -316,7 +317,7 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
                     img_metas, 
                     prim_proposals=None, aux_proposals=None,
                     rescale=False):
-        prim_feats, aug_feats = self.extract_feat(prim_img, aux_img)
+        prim_feats, aux_feats = self.extract_feat(prim_img, aux_img)
         if prim_proposals is None:
             prim_proposal_list = self.prim_rpn_head.simple_test_rpn(prim_feats, img_metas)
             aux_proposal_list = self.aux_rpn_head.simple_test_rpn(aux_feats, img_metas)
@@ -324,7 +325,7 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
             prim_proposal_list = prim_proposals
             aux_proposal_list = aux_proposals
 
-        return self.roi_head.simple_test(prim_feats, aug_feats, 
+        return self.roi_head.simple_test(prim_feats, aux_feats, 
                                          prim_proposal_list, aux_proposal_list, 
                                          img_metas,
                                          prim_proposals, aux_proposals,
