@@ -261,7 +261,8 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
             gt_labels=None,
             gt_bboxes_ignore=prim_gt_bboxes_ignore,
             proposal_cfg=proposal_cfg)
-        losses.update(prim_rpn_losses)
+        # print("prim_rpn_losses", prim_rpn_losses)
+        losses.update({"prim_" + k: v  for k,v in prim_rpn_losses.items()})
 
         aux_rpn_losses, aux_proposal_list = self.aux_rpn_head.forward_train(
             aux_feats, 
@@ -270,13 +271,15 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
             gt_labels=None,
             gt_bboxes_ignore=aux_gt_bboxes_ignore,
             proposal_cfg=proposal_cfg)
-        losses.update(aux_rpn_losses)
+        # print("aux_rpn_losses", aux_rpn_losses)
+        losses.update({"aux_" + k : v for k, v in aux_rpn_losses.items()})
 
         roi_losses = self.roi_head.forward_train(prim_feats, aux_feats,
                                                  img_metas, 
                                                  prim_proposal_list, aux_proposal_list,
                                                  prim_gt_bboxes, prim_gt_labels, prim_gt_bboxes_ignore,
                                                  aux_gt_bboxes, aux_gt_labels, aux_gt_bboxes_ignore)
+        
         losses.update(roi_losses)
         
         return losses

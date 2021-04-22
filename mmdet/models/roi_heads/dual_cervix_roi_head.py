@@ -529,6 +529,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                                                 bbox_results['aux_bbox_pred'],
                                                 aux_rois,
                                                 *aux_targets)
+        prim_loss_bbox = {"prim_" + k: v for k,v in prim_loss_bbox.items()}
+        aux_loss_bbox = {"aux_" + k: v for k,v in aux_loss_bbox.items()}
         bbox_results.update(prim_loss_bbox=prim_loss_bbox)
         bbox_results.update(aux_loss_bbox=aux_loss_bbox)
 
