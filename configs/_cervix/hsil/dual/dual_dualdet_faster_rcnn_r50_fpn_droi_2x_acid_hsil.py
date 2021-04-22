@@ -3,9 +3,13 @@ _base_ = [
     '../../../_base_/default_runtime.py',
     './dual_dualdet_base_acid.py'
 ]
+prim_weights = 1.0
+aux_weights = 0.5
+
 model = dict(
     type='FasterPrimAuxDualDetector',
     pretrained='torchvision://resnet50',
+    #!
     aug_acid=True,
     
     prim_backbone=dict(
@@ -54,8 +58,8 @@ model = dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(type='L1Loss', loss_weight=1.0)),
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * prim_weights),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0 * prim_weights)),
     
     aux_rpn_head=dict(
         type='RPNHead',
@@ -71,8 +75,8 @@ model = dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(type='L1Loss', loss_weight=1.0)),
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * aux_weights),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0 * aux_weights)),
 
     roi_head=dict(
         type='DualCervixDualDetPrimAuxRoiHead',
@@ -119,8 +123,8 @@ model = dict(
                 target_stds=[0.1, 0.1, 0.2, 0.2]),
             reg_class_agnostic=False,
             loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='L1Loss', loss_weight=1.0)),
+                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0 * prim_weights),
+            loss_bbox=dict(type='L1Loss', loss_weight=1.0 * prim_weights)),
 
         aux_bbox_head=dict(
             type='Shared2FCBBoxHead',
@@ -134,8 +138,8 @@ model = dict(
                 target_stds=[0.1, 0.1, 0.2, 0.2]),
             reg_class_agnostic=False,
             loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='L1Loss', loss_weight=1.0))))
+                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0 * aux_weights),
+            loss_bbox=dict(type='L1Loss', loss_weight=1.0 * aux_weights))))
 
 
 train_cfg = dict(
@@ -193,4 +197,7 @@ test_cfg = dict(
         max_per_img=100)
     # soft-nms is also supported for rcnn testing
     # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
+)
+data = dict(
+    samples_per_gpu=1
 )
