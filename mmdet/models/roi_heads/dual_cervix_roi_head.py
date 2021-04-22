@@ -265,7 +265,7 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         n = rois.shape[0]
         out_size = prim_bbox_feats.shape[-1]
         offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
-        aux_bbox_feats = self.aux_bbox_roi_extractor(aux_feats, rois, offset)
+        aux_bbox_feats = self.aux_bbox_roi_extractor(aux_feats[:self.aux_bbox_roi_extractor.num_inputs], rois, offset)
 
         bbox_feats = torch.cat([prim_bbox_feats, aux_bbox_feats], dim=1)
         cls_score, bbox_pred = self.bbox_head(bbox_feats)
@@ -499,7 +499,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
         out_size = prim_bbox_feats.shape[-1]
         offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
-        bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats, prim_rois, offset)
+        bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats[:self.bridge_bbox_droi_extractor.num_inputs], prim_rois, offset)
         prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)
         prim_cls_score, prim_bbox_pred = self.prim_bbox_head(prim_bbox_feats)
 
