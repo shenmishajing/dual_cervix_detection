@@ -18,51 +18,133 @@ def single_gpu_test(model,
                     show=False,
                     out_dir=None,
                     show_score_thr=0.3):
+
     model.eval()
     results = []
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
-    for i, data in enumerate(data_loader):
-        with torch.no_grad():
-            result = model(return_loss=False, rescale=True, **data)
 
-        batch_size = len(result)
-        if show or out_dir:
-            if batch_size == 1 and isinstance(data['img'][0], torch.Tensor):
-                img_tensor = data['img'][0]
-            else:
-                img_tensor = data['img'][0].data[0]
-            img_metas = data['img_metas'][0].data[0]
-            imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
-            assert len(imgs) == len(img_metas)
+    dual_det = hasattr(dataset, "dual_det")
+    
+    if not dual_det: 
+        for i, data in enumerate(data_loader):
+            with torch.no_grad():
+                result = model(return_loss=False, rescale=True, **data)
 
-            for i, (img, img_meta) in enumerate(zip(imgs, img_metas)):
-                h, w, _ = img_meta['img_shape']
-                img_show = img[:h, :w, :]
-
-                ori_h, ori_w = img_meta['ori_shape'][:-1]
-                img_show = mmcv.imresize(img_show, (ori_w, ori_h))
-
-                if out_dir:
-                    out_file = osp.join(out_dir, img_meta['ori_filename'])
+            batch_size = len(result)
+            if show or out_dir:
+                if batch_size == 1 and isinstance(data['img'][0], torch.Tensor):
+                    img_tensor = data['img'][0]
                 else:
-                    out_file = None
+                    img_tensor = data['img'][0].data[0]
+                img_metas = data['img_metas'][0].data[0]
+                imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+                assert len(imgs) == len(img_metas)
 
-                model.module.show_result(
-                    img_show,
-                    result[i],
-                    show=show,
-                    out_file=out_file,
-                    score_thr=show_score_thr)
+                for i, (img, img_meta) in enumerate(zip(imgs, img_metas)):
+                    h, w, _ = img_meta['img_shape']
+                    img_show = img[:h, :w, :]
 
-        # encode mask results
-        if isinstance(result[0], tuple):
-            result = [(bbox_results, encode_mask_results(mask_results))
-                      for bbox_results, mask_results in result]
-        results.extend(result)
+                    ori_h, ori_w = img_meta['ori_shape'][:-1]
+                    img_show = mmcv.imresize(img_show, (ori_w, ori_h))
 
-        for _ in range(batch_size):
-            prog_bar.update()
+                    if out_dir:
+                        out_file = osp.join(out_dir, img_meta['ori_filename'])
+                    else:
+                        out_file = None
+
+                    model.module.show_result(
+                        img_show,
+                        result[i],
+                        show=show,
+                        out_file=out_file,
+                        score_thr=show_score_thr)
+
+            # encode mask results
+            if isinstance(result[0], tuple):
+                result = [(bbox_results, encode_mask_results(mask_results))
+                        for bbox_results, mask_results in result]
+            results.extend(result)
+
+            for _ in range(batch_size):
+                prog_bar.update()
+    else:
+        assert show == False, "show must be False when dual det"
+        #! dual det
+
+        for i, data in enumerate(data_loader):
+            with torch.no_grad():
+                result = model(return_loss=False, rescale=True, **data)
+            #! result = [prim_result, aux_result, prim_result, aux_result, ...]
+
+            batch_size = len(result) // 2
+            if show or out_dir:
+                if batch_size == 1 and isinstance(data["acid_img"][0], torch.Tensor):
+                    acid_img_tensor = data["acid_img"][0]
+                    iodine_img_tensor = data["iodine_img"][0]
+                else:
+                    acid_img_tensor = data["acid_img"][0].data[0]
+                    iodine_img_tensor = data["iodine_img"][0].data[0]
+                img_metas = data["img_metas"][0].data[0] 
+                acid_imgs = tensor2imgs(acid_img_tensor, 
+                                        mean=img_metas[0]["img_norm_cfg"]["acid_mean"],
+                                        std=img_metas[0]["img_norm_cfg"]["acid_std"],
+                                        to_rgb=img_metas[0]["img_norm_cfg"]["to_rgb"])
+                iodine_imgs = tensor2imgs(iodine_img_tensor, 
+                                        mean=img_metas[0]["img_norm_cfg"]["iodine_mean"],
+                                        std=img_metas[0]["img_norm_cfg"]["iodine_std"],
+                                        to_rgb=img_metas[0]["img_norm_cfg"]["to_rgb"])
+                assert len(acid_imgs) == len(img_metas)
+
+                for i, (acid_img, iodine_img, img_meta) in enumerate(zip(acid_imgs, iodine_imgs, img_metas)):
+                    h,w,_ = img_meta["img_shape"]
+                    ori_h, ori_w = img_meta["ori_shape"][:-1]
+                    acid_img_show = acid_img[:h, :w, :]
+                    acid_img_show = mmcv.imresize(acid_img_show, (ori_w, ori_h))
+
+                    iodine_img_show = iodine_img[:h, :w, :]
+                    iodine_img_show = mmcv.imresize(iodine_img_show, (ori_w, ori_h))
+
+                    
+                    if out_dir:
+                        if dataset.prim == "acid":
+                            acid_out_file = osp.join(out_dir, img_meta["ori_filename"][0].replace('.jpg', '_prim.jpg'))
+                            iodine_out_file = osp.join(out_dir, img_meta["ori_filename"][1].replace('.jpg', '_aux.jpg'))
+                        elif dataset.prim == "iodine":
+                            acid_out_file = osp.join(out_dir, img_meta["ori_filename"][0].replace('.jpg', '_aux.jpg'))
+                            iodine_out_file = osp.join(out_dir, img_meta["ori_filename"][1].replace('.jpg', '_prim.jpg'))  
+                        else:
+                            acid_out_file = osp.join(out_dir, img_meta["ori_filename"][0])
+                            iodine_out_file = osp.join(out_dir, img_meta["ori_filename"][1])                          
+                    else:
+                        acid_out_file = None
+                        iodine_out_file = None
+
+                    if dataset.prim == "acid" or dataset.prim is None:
+                        acid_result = result[0][0]
+                        iodine_result = result[1][0]
+                    else:
+                        iodine_result = result[1][0]
+                        acid_result = result[0][0]
+
+                    model.module.show_result(
+                        acid_img_show,
+                        acid_result,
+                        show=show,
+                        out_file=acid_out_file,
+                        score_thr=show_score_thr)
+                    model.module.show_result(
+                        iodine_img_show,
+                        iodine_result,
+                        show=show,
+                        out_file=iodine_out_file,
+                        score_thr=show_score_thr)
+
+            results.extend(result)
+
+            for _ in range(batch_size):
+                prog_bar.update()
+
     return results
 
 
