@@ -365,16 +365,20 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def __init__(self, 
-                attention_cfg, 
-                offset_cfg,
                 prim_bbox_roi_extractor,
                 aux_bbox_roi_extractor, 
-                bridge_bbox_droi_extractor,
                 prim_bbox_head,
                 aux_bbox_head,
+                bridge_bbox_droi_extractor=None,
+                attention_cfg=None, 
+                offset_cfg=None,
                 train_cfg=None, 
                 test_cfg=None):
         super(BaseRoIHead, self).__init__()
+
+        if (offset_cfg is None and bridge_bbox_droi_extractor is not None) or (offset_cfg is not None and bridge_bbox_droi_extractor is None):
+            raise "offset_cfg and bridge_bbox_droi_extractor must be None or not None at the same time"
+
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.init_attention(attention_cfg)
@@ -386,11 +390,17 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def init_attention(self, attention_cfg):
-        self.attention = PrimAuxAttention(**attention_cfg)
+        if attention_cfg is not None:
+            self.attention = PrimAuxAttention(**attention_cfg)
+        else:
+            self.attention = None
 
 
     def init_proposalOffset(self, offset_cfg):
-        self.proposalOffset = ProposalOffset(**offset_cfg)
+        if offset_cfg is not None:
+            self.proposalOffset = ProposalOffset(**offset_cfg)
+        else:
+            self.proposalOffset = None
 
 
     def init_bbox_head(self, 
@@ -399,7 +409,12 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                        prim_bbox_head, aux_bbox_head):
         self.prim_bbox_roi_extractor = build_roi_extractor(prim_bbox_roi_extractor)
         self.aux_bbox_roi_extractor = build_roi_extractor(aux_bbox_roi_extractor)
-        self.bridge_bbox_droi_extractor = build_roi_extractor(bridge_bbox_droi_extractor)
+        
+        if bridge_bbox_droi_extractor:
+            self.bridge_bbox_droi_extractor = build_roi_extractor(bridge_bbox_droi_extractor)
+        else:
+            self.bridge_bbox_droi_extractor = None
+        
         self.prim_bbox_head = build_head(prim_bbox_head)
         self.aux_bbox_head = build_head(aux_bbox_head)
 
@@ -419,11 +434,17 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def init_weights(self):
-        self.attention.init_weights()
-        self.proposalOffset.init_weights()
+        if self.attention:
+            self.attention.init_weights()
+        if self.proposalOffset:
+            self.proposalOffset.init_weights()
+
         self.prim_bbox_roi_extractor.init_weights()
         self.aux_bbox_roi_extractor.init_weights()
-        self.bridge_bbox_droi_extractor.init_weights()
+        
+        if self.bridge_bbox_droi_extractor:
+            self.bridge_bbox_droi_extractor.init_weights()
+        
         self.prim_bbox_head.init_weights()
         self.aux_bbox_head.init_weights()
 
@@ -494,13 +515,16 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
         prim_bbox_feats = self.prim_bbox_roi_extractor(
             prim_feats[:self.prim_bbox_roi_extractor.num_inputs], prim_rois)
-        offset = self.proposalOffset(prim_bbox_feats)
-        n = prim_rois.shape[0]
+        
 
-        out_size = prim_bbox_feats.shape[-1]
-        offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
-        bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats[:self.bridge_bbox_droi_extractor.num_inputs], prim_rois, offset)
-        prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)
+        if self.bridge_bbox_droi_extractor:
+            offset = self.proposalOffset(prim_bbox_feats)
+            n = prim_rois.shape[0]
+            out_size = prim_bbox_feats.shape[-1]
+            offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
+            bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats[:self.bridge_bbox_droi_extractor.num_inputs], prim_rois, offset)
+            prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)
+
         prim_cls_score, prim_bbox_pred = self.prim_bbox_head(prim_bbox_feats)
 
         bbox_results = dict(
