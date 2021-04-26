@@ -65,38 +65,6 @@ class PrimAuxAttention(nn.Module):
         return aug_feats
 
 
-class PrimSelfAttention(nn.Module):
-
-
-    def __init__(self, in_channels, out_channels, num_levels=5, shared=False):
-
-        super(PrimSelfAttention, self).__init__()
-        assert isinstance(in_channels, int), "type of in_channels must be int"
-        assert isinstance(out_channels, int), "type of out_channels must be int"
-
-        self.shared = shared
-        self.num_levels = num_levels
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.init_layers()
-
-
-    def init_layers(self):
-
-        pass
-
-
-    def init_weights(self):
-
-        pass
-
-
-    def forward(self, prim_feats, aux_feats):
-
-
-        pass
-
-
 class ProposalOffset(nn.Module):
 
 
@@ -130,6 +98,57 @@ class ProposalOffset(nn.Module):
             x = m(x)
 
         return x
+
+
+class FPNFeatureFuser(nn.Module):
+
+
+    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, fuse_type=None):
+        super(FPNFeatureFuser, self).__init__()
+        #! None is sum
+        assert fuse_type in (None, "cat"), "fuse_type is not in (None, 'cat)"
+
+        self.num_levels = num_levels
+        self.output_size = (roi_feat_size, roi_feat_size)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.fuse_type = fuse_type
+        self.init_layers()
+
+    
+    def init_layers(self):
+        self.pool_list = nn.ModuleList([
+            nn.FractionalMaxPool2d(3, output_size=self.output_size)
+            for _ in range(self.num_levels)
+        ])
+
+        if self.fuse_type == "cat":
+            self.conv = nn.Conv2d(self.in_channels, self.out_channels, 1, 1)
+
+
+    def init_weights(self):
+        if self.fuse_type == "cat":
+            normal_init(self.conv, std=0.01)
+
+    
+    def forward(self, prim_bbox_feats, aux_global_feats):
+        tmp = self.pool_list[0](aux_global_feats[0])
+        for i in range(1, self.num_levels):
+            tmp += self.pool_list[i](aux_global_feats[i])
+        tmp /= self.num_levels
+        
+        # prim_bbox_feats 按图片的顺序放置 [B * 512, 256, 7, 7]
+        # [512(img_1), 512(img_2), ..., 512(img_B)]
+        n1 = prim_bbox_feats.shape[0]
+        n2 = tmp.shape[0]
+        aux_global_feats_repeated = torch.repeat_interleave(tmp, n1 // n2, dim=0)
+        if self.fuse_type is None:
+            out = prim_bbox_feats + aux_global_feats_repeated
+        elif self.fuse_type == "cat":
+            out = torch.cat([prim_bbox_feats, aux_global_feats_repeated], dim=1)
+            out = self.conv(out)
+
+        return out
 
 
 @HEADS.register_module()
@@ -372,6 +391,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                 bridge_bbox_droi_extractor=None,
                 attention_cfg=None, 
                 offset_cfg=None,
+                fpn_fuser_cfg=None,
                 train_cfg=None, 
                 test_cfg=None):
         super(BaseRoIHead, self).__init__()
@@ -383,6 +403,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         self.test_cfg = test_cfg
         self.init_attention(attention_cfg)
         self.init_proposalOffset(offset_cfg)
+        self.init_FPNFeatureFuser(fpn_fuser_cfg)
         self.init_bbox_head(prim_bbox_roi_extractor, aux_bbox_roi_extractor, bridge_bbox_droi_extractor, prim_bbox_head, aux_bbox_head)
         self.init_assigner_sampler()
 
@@ -401,6 +422,13 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             self.proposalOffset = ProposalOffset(**offset_cfg)
         else:
             self.proposalOffset = None
+
+
+    def init_FPNFeatureFuser(self, fpn_fuser_cfg):
+        if fpn_fuser_cfg is not None:
+            self.fpn_fuser = FPNFeatureFuser(**fpn_fuser_cfg)
+        else:
+            self.fpn_fuser = None
 
 
     def init_bbox_head(self, 
@@ -438,6 +466,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             self.attention.init_weights()
         if self.proposalOffset:
             self.proposalOffset.init_weights()
+        if self.fpn_fuser:
+            self.fpn_fuser.init_weights()
 
         self.prim_bbox_roi_extractor.init_weights()
         self.aux_bbox_roi_extractor.init_weights()
@@ -518,7 +548,11 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         
 
         if self.bridge_bbox_droi_extractor:
-            offset = self.proposalOffset(prim_bbox_feats)
+            if self.fpn_fuser:
+                prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, aux_feats)
+                offset = self.proposalOffset(prim_bbox_feats_)
+            else:
+                offset = self.proposalOffset(prim_bbox_feats)
             n = prim_rois.shape[0]
             out_size = prim_bbox_feats.shape[-1]
             offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
