@@ -103,16 +103,20 @@ class ProposalOffset(nn.Module):
 class FPNFeatureFuser(nn.Module):
 
 
-    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, fuse_type=None):
+    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, fuse_type=None, naive_fuse=True):
         super(FPNFeatureFuser, self).__init__()
         #! None is sum
         assert fuse_type in (None, "cat"), "fuse_type is not in (None, 'cat)"
+        if fuse_type == "cat":
+            assert (in_channels is not None and out_channels is not None), "when fuse_type = cat, in_channels and out_channels must be not None"
 
         self.num_levels = num_levels
         self.output_size = (roi_feat_size, roi_feat_size)
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.fuse_type = fuse_type
+        self.naive_fuse = naive_fuse
+        self.finest_scale = 56
         self.init_layers()
 
     
@@ -130,8 +134,30 @@ class FPNFeatureFuser(nn.Module):
         if self.fuse_type == "cat":
             normal_init(self.conv, std=0.01)
 
-    
-    def forward(self, prim_bbox_feats, aux_global_feats):
+
+    def map_roi_levels(self, rois, num_levels):
+        """Map rois to corresponding feature levels by scales.
+
+        - scale < finest_scale * 2: level 0
+        - finest_scale * 2 <= scale < finest_scale * 4: level 1
+        - finest_scale * 4 <= scale < finest_scale * 8: level 2
+        - scale >= finest_scale * 8: level 3
+
+        Args:
+            rois (Tensor): Input RoIs, shape (k, 5).
+            num_levels (int): Total level number.
+
+        Returns:
+            Tensor: Level index (0-based) of each RoI, shape (k, )
+        """
+        scale = torch.sqrt(
+            (rois[:, 3] - rois[:, 1]) * (rois[:, 4] - rois[:, 2]))
+        target_lvls = torch.floor(torch.log2(scale / self.finest_scale + 1e-6))
+        target_lvls = target_lvls.clamp(min=0, max=num_levels - 1).long()
+        return target_lvls
+
+
+    def naive_fuse(self, prim_bbox_feats, aux_global_feats):
         tmp = self.pool_list[0](aux_global_feats[0])
         for i in range(1, self.num_levels):
             tmp += self.pool_list[i](aux_global_feats[i])
@@ -147,6 +173,46 @@ class FPNFeatureFuser(nn.Module):
         elif self.fuse_type == "cat":
             out = torch.cat([prim_bbox_feats, aux_global_feats_repeated], dim=1)
             out = self.conv(out)
+        
+        return out
+
+
+    def align_fuse(self, prim_bbox_feats, aux_global_feats, prim_rois):
+        aux_feats_list = []
+        for i in range(self.num_levels):
+            aux_feats_list.append(
+                self.pool_list[i](aux_global_feats[i])
+            )
+        target_lvls = self.map_roi_levels(prim_rois, self.num_levels)
+        # prim_bbox_feats 按图片的顺序放置 [B * 512, 256, 7, 7]
+        # [512(img_1), 512(img_2), ..., 512(img_B)]
+
+        #! [lvl1_feats, lvl2_feats, ...] - > shape = [num_level, B, 256, 7, 7]
+        aux_feats_stack = torch.stack(aux_feats_list, dim=0)
+        num_imgs = aux_global_feats[0].shape[0]
+        num_proposals_all_imgs = prim_bbox_feats.shape[0]
+        repeat_times = num_proposals_all_imgs // num_imgs
+        gather_aux_feats = []
+        for i in range(num_imgs):
+            idx = prim_rois[i * repeat_times: (i + 1) * repeat_times, 0].long()
+            aux_feats_gathered = aux_feats_stack[idx, i]
+            gather_aux_feats.append(aux_feats_gathered)
+        aux_feats = torch.cat(gather_aux_feats, dim=0)
+
+        if self.fuse_type is None:
+            out = prim_bbox_feats + aux_feats
+        elif self.fuse_type == "cat":
+            out = torch.cat([prim_bbox_feats, aux_feats], dim=1)
+            out = self.conv(out)
+        
+        return out
+
+
+    def forward(self, prim_bbox_feats, aux_global_feats, prim_rois):
+        if self.naive_fuse:
+            out = self.naive_fuse(prim_bbox_feats, aux_global_feats)
+        else:
+            out = self.align_fuse(prim_bbox_feats, aux_global_feats, prim_rois)
 
         return out
 
@@ -549,7 +615,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
         if self.bridge_bbox_droi_extractor:
             if self.fpn_fuser:
-                prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, aux_feats)
+                prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, aux_feats, prim_rois)
                 offset = self.proposalOffset(prim_bbox_feats_)
             else:
                 offset = self.proposalOffset(prim_bbox_feats)
