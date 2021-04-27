@@ -454,18 +454,18 @@ class DualCervixDataset(CustomDataset):
 
             if self.prim == "acid":
                 ret = {
-                    "prim(acid})": prim_metric,
+                    "prim(acid)": prim_metric,
                     "aux(iodine)": aux_metric
                 }
             elif self.prim == "iodine":
                 ret = {
-                    "prim(iodine})": prim_metric,
+                    "prim(iodine)": prim_metric,
                     "aux(acid)": aux_metric
                 }
             else:
                 ret = {
-                    "prim1(acid)".format(prim): prim_metric,
-                    "prim2(iodine)".format(aux): aux_metric
+                    "prim1(acid)": prim_metric,
+                    "prim2(iodine)": aux_metric
                 }
             
         else:
