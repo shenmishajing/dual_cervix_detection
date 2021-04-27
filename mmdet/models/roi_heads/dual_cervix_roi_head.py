@@ -115,7 +115,7 @@ class FPNFeatureFuser(nn.Module):
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.fuse_type = fuse_type
-        self.naive_fuse = naive_fuse
+        self.naive_fuse_flag = naive_fuse
         self.finest_scale = 56
         self.init_layers()
 
@@ -209,7 +209,7 @@ class FPNFeatureFuser(nn.Module):
 
 
     def forward(self, prim_bbox_feats, aux_global_feats, prim_rois):
-        if self.naive_fuse:
+        if self.naive_fuse_flag:
             out = self.naive_fuse(prim_bbox_feats, aux_global_feats)
         else:
             out = self.align_fuse(prim_bbox_feats, aux_global_feats, prim_rois)
