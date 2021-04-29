@@ -1,7 +1,5 @@
 _base_ = [
     './acid_base.py',
-    '../../../_base_/schedules/schedule_2x.py',
-    '../../../_base_/default_runtime.py'
 ]
 model = dict(
     type='RepPointsDetector',
@@ -66,5 +64,5 @@ test_cfg = dict(
     nms=dict(type='nms', iou_threshold=0.5),
     max_per_img=100)
 #! 初始lr=0.02不行
-optimizer = dict(lr=0.001)
+# optimizer = dict(lr=0.001)
 data = dict(samples_per_gpu=2)

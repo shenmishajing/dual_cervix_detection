@@ -3,6 +3,12 @@ _base_ = [
     '../../../_base_/default_runtime.py',
 ]
 
+log_config = dict(
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
+
 dataset_type = 'DualCervixDataset'
 data_root = 'data/cervix/'
 classes = ("hsil", )

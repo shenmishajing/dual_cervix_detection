@@ -1,7 +1,5 @@
 _base_ = [
     './acid_base.py',
-    '../../../_base_/schedules/schedule_2x.py',
-    '../../../_base_/default_runtime.py'
 ]
 # model settings
 model = dict(
@@ -65,4 +63,4 @@ test_cfg = dict(
     max_per_img=100)
 
 data = dict(samples_per_gpu=2)
-optimizer = dict(lr=0.001)
+# optimizer = dict(lr=0.001)

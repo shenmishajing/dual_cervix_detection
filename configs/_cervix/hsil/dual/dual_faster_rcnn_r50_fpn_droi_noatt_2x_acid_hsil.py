@@ -1,5 +1,5 @@
 _base_ = [
-    './dual_dualdet_faster_rcnn_r50_fpn_droi_2x_iodine_hsil.py'
+    './dual_faster_rcnn_r50_fpn_droi_2x_acid_hsil.py'
 ]
 
 

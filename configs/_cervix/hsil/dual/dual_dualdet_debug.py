@@ -1,7 +1,7 @@
 _base_ = [
     '../../../_base_/schedules/schedule_2x.py',
     '../../../_base_/default_runtime.py',
-    './dual_dualdet_base_acid.py'
+    './dual_base_acid.py'
 ]
 prim_weights = 1.0
 aux_weights = 0.5
@@ -90,6 +90,11 @@ model = dict(
             in_channels=256, 
             out_channels=256, 
             roi_feat_area=7*7), #! squared roi_feat_size(in bbox_head)
+
+        fpn_fuser_cfg=dict(
+            roi_feat_size=7,
+            num_levels=4,
+        ),
 
         prim_bbox_roi_extractor=dict(
             type='SingleRoIExtractor',
@@ -198,6 +203,61 @@ test_cfg = dict(
     # soft-nms is also supported for rcnn testing
     # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
 )
+dataset_type = 'DualCervixDataset'
+data_root = 'data/cervix/'
+classes = ("hsil", )
+img_norm_cfg = dict(
+    acid_mean=[143.9475, 102.153, 97.971], acid_std=[42.075, 39.2445, 40.086],
+    iodine_mean=[134.4105, 89.1735, 63.24], iodine_std=[60.945, 60.3585, 55.9215],
+    to_rgb=True)
+train_pipeline = [
+    dict(type='LoadDualCervixImageFromFile'),
+    dict(type='LoadDualCervixAnnotations', with_bbox=True),
+    dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(type='DualCervixNormalize', **img_norm_cfg),
+    dict(type='Pad', size_divisor=32),
+    dict(type='DualCervixDefaultFormatBundle'),
+    dict(type='Collect', keys=['acid_img', 'iodine_img', 'acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']),
+]
+test_pipeline = [
+    dict(type='LoadDualCervixImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(1333, 800),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=True),
+            dict(type='RandomFlip'),
+            dict(type='DualCervixNormalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=32),
+            dict(type='ImageToTensor', keys=['acid_img', 'iodine_img']),
+            dict(type='Collect', keys=['acid_img', 'iodine_img']),
+        ])
+]
 data = dict(
-    samples_per_gpu=1
-)
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+    train=dict(
+        type=dataset_type,
+        classes=classes,
+        acid_ann_file=data_root + 'hsil_annos/train_acid.json',
+        iodine_ann_file=data_root + 'hsil_annos/train_iodine.json',
+        img_prefix=data_root + 'img/',
+        pipeline=train_pipeline),
+    val=dict(
+        type=dataset_type,
+        classes=classes,
+        acid_ann_file=data_root + 'hsil_annos/debug_acid.json',
+        iodine_ann_file=data_root + 'hsil_annos/debug_iodine.json',
+        img_prefix=data_root + 'img/',
+        pipeline=test_pipeline),
+    test=dict(
+        type=dataset_type,
+        classes=classes,
+        acid_ann_file=data_root + 'hsil_annos/debug_acid.json',
+        iodine_ann_file=data_root + 'hsil_annos/debug_iodine.json',
+        img_prefix=data_root + 'img/',
+        pipeline=test_pipeline))
+
+log_config = dict(interval=2)

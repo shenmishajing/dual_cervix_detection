@@ -1,4 +1,6 @@
 _base_ = [
+    '../../../_base_/schedules/schedule_2x.py', 
+    '../../../_base_/default_runtime.py',
     './acid_base.py'
 ]
 model = dict(
@@ -112,5 +114,5 @@ test_cfg = dict(
     # soft-nms is also supported for rcnn testing
     # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
 )
-
-data = dict(samples_per_gpu=2)
+total_epochs = 240
+data = dict(samples_per_gpu=5)
