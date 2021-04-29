@@ -1,6 +1,4 @@
 _base_ = [
-    '../../../_base_/schedules/schedule_2x.py',
-    '../../../_base_/default_runtime.py',
     './dual_base_acid.py'
 ]
 prim_weights = 1.0
