@@ -982,6 +982,7 @@ class SingleCervixDataset(CervixDataset):
     CLASSES = ('lsil', 'hsil')
     
     def __init__(self,
+                 img_type,
                  ann_file,
                  pipeline,
                  classes=None,
@@ -1000,6 +1001,7 @@ class SingleCervixDataset(CervixDataset):
                                                   proposal_file, 
                                                   test_mode, 
                                                   filter_empty_gt)
+        self.img_type = img_type
         self._iou_threshs = list(range(50, 100, 5))
         self._max_dets = [1, 2, 3, 5, 10, 100] 
         self._class_names = self.get_classes(classes=classes)
@@ -1017,6 +1019,6 @@ class SingleCervixDataset(CervixDataset):
         # tt = super(SingleCervixDataset, self).evaluate(results,metric,logger,jsonfile_prefix,classwise,proposal_nums,iou_thr,metric_items)
         tf_dets = self.convert_dets_format(results)      
         tf_annos = self.get_format_annos(self.data_infos)
-        ret = self.evaluate_single(tf_dets, tf_annos)        
+        ret = self.evaluate_single(tf_dets, tf_annos, suffix=self.img_type)        
 
         return ret
