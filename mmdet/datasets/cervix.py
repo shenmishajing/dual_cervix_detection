@@ -1019,6 +1019,6 @@ class SingleCervixDataset(CervixDataset):
         # tt = super(SingleCervixDataset, self).evaluate(results,metric,logger,jsonfile_prefix,classwise,proposal_nums,iou_thr,metric_items)
         tf_dets = self.convert_dets_format(results)      
         tf_annos = self.get_format_annos(self.data_infos)
-        ret = self.evaluate_single(tf_dets, tf_annos, suffix=self.img_type)        
+        ret = self.evaluate_single(tf_dets, tf_annos, suffix="_" + self.img_type)        
 
         return ret
