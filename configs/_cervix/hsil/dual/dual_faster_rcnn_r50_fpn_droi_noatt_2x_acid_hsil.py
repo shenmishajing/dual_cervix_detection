@@ -6,7 +6,3 @@ _base_ = [
 model = dict(
     roi_head=dict(
         attention_cfg=None))
-
-data = dict(
-    samples_per_gpu=1
-)

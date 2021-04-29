@@ -199,3 +199,4 @@ test_cfg = dict(
 data = dict(
     samples_per_gpu=1
 )
+total_epochs = 40

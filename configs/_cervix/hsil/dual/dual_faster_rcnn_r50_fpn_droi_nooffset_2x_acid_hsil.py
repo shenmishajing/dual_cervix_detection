@@ -9,7 +9,3 @@ model = dict(
         prim_bbox_head=dict(
             in_channels=256 
             )))
-
-data = dict(
-    samples_per_gpu=1
-)
