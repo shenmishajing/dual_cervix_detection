@@ -47,6 +47,7 @@ import matplotlib.pyplot as plt
 
 class CervixDataset(CocoDataset):
 
+
     def convert_dets_format(self, dets):
         """ 
             检测结果的格式：
@@ -423,6 +424,10 @@ class DualCervixDataset(CervixDataset):
 
         # processing pipeline
         self.pipeline = Compose(pipeline)
+
+        self._iou_threshs = list(range(50, 100, 5))
+        self._max_dets = [1, 2, 3, 5, 10, 100] 
+        self._class_names = self.get_classes(classes=classes)
 
 
     def load_annotations(self, acid_ann_file, iodine_ann_file):
@@ -916,6 +921,29 @@ class DualCervixDataset(CervixDataset):
         return eval_results   
 
 
+    def get_format_annos(self, data_infos):
+        acid_tf_annos = defaultdict(list)
+        iodine_tf_annos = defaultdict(list)
+
+        for idx in range(len(data_infos)):
+            image_id = idx
+            anno = self.get_ann_info(idx) 
+
+            for box, label in zip(anno["bboxes"][0].tolist(), anno["labels"][0].tolist()):
+                acid_tf_annos[image_id].append({
+                    "class": label,
+                    "box": [int(round(x)) for x in box]
+                })
+
+            for box, label in zip(anno["bboxes"][1].tolist(), anno["labels"][1].tolist()):
+                iodine_tf_annos[image_id].append({
+                    "class": label,
+                    "box": [int(round(x)) for x in box]
+                })
+
+        return acid_tf_annos, iodine_tf_annos
+
+
     def evaluate(self,
                  results,
                  metric='bbox',
@@ -937,11 +965,10 @@ class DualCervixDataset(CervixDataset):
         acid_tf_dets = self.convert_dets_format(acid_results)
         iodine_tf_dets = self.convert_dets_format(iodine_results)
 
-        acid_tf_annos = self.get_format_annos(self.acid_coco)
-        iodine_tf_annos = self.get_format_annos(self.iodine_coco)
+        acid_tf_annos, iodine_tf_annos = self.get_format_annos(self.data_infos)
 
-        acid_ret = super(DualCervixDataset, self).evaluate_single(acid_tf_dets, acid_tf_annos, "acid")
-        iodine_ret = super(DualCervixDataset, self).evaluate_single(iodine_tf_dets, iodine_tf_dets, "iodine")
+        acid_ret = super(DualCervixDataset, self).evaluate_single(acid_tf_dets, acid_tf_annos, "_acid")
+        iodine_ret = super(DualCervixDataset, self).evaluate_single(iodine_tf_dets, iodine_tf_annos, "_iodine")
 
         ret = dict()
         ret.update(acid_ret)
