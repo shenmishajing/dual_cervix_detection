@@ -45,30 +45,343 @@ import matplotlib.pyplot as plt
 },
 """
 
+class CervixDataset(CocoDataset):
+
+    def convert_dets_format(self, dets):
+        """ 
+            检测结果的格式：
+                img1_list = [arr_cls1, arr_cls2, ...], 
+                    某个类别为空的arr = np.zeros((0, 5), float32)
+                    不空的时候为 arr = np.([
+                                            [xmin, ymin, xmax, ymax, score],
+                                            [], ...])
+                dets = [img1_list, img2_list, ...]
+            
+            目标格式：
+                {
+                    cls1_ind: list[dict],
+                    cls2_ind: list[dict],
+                    ...
+                }
+
+                dict: { 每个检测框一个字典
+                    "image_id": image_id,
+                    "box": , np.array([xmin, ymin, xmax, ymax], np.float32)
+                    "score": 0.65
+                }
+        """
+        tf_dets = defaultdict(list)
+        for image_id, det in enumerate(dets):
+            for cls_ind, arr in enumerate(det):
+                for j in range(arr.shape[0]):
+                    tf_dets[cls_ind].append({
+                        "image_id": image_id,
+                        "box": arr[j, :4],
+                        "score": float(arr[j, 4])
+                    })
+
+        return tf_dets
+
+
+    def get_format_annos(self, data_infos):
+        """ 
+            gts原本的格式：
+                COCO
+                self.data_infos[idx] = {
+                    'file_name': '08274633_2016-05-11_2.jpg',
+                    'height': 600, 
+                    'width': 733, 
+                    'id': 6256, 
+                    'filename': '08274633_2016-05-11_2.jpg'
+                }
+                anno = self.get_ann_info(idx)
+                anno = dict(
+                    bboxes=gt_bboxes, np.array float32
+                    labels=gt_labels, np.array int64
+                    bboxes_ignore=gt_bboxes_ignore,
+                    masks=gt_masks_ann,
+                    seg_map=seg_map)
+
+            目标格式：
+                {
+                    image_id: [{
+                        "class": cls_id,
+                        "box": [xmin, ymin, xmax, ymax]
+                    }, {
+                        "class": cls_id,
+                        "box": [xmin, ymin, xmax, ymax]
+                    }, ...]
+                    ...
+                }
+        """
+        tf_annos = defaultdict(list)
+        for idx in range(len(data_infos)):
+            image_id = idx
+            anno = self.get_ann_info(idx)  
+            for box, label in zip(anno["bboxes"].tolist(), anno["labels"].tolist()):
+                tf_annos[image_id].append({
+                    "class": label,
+                    "box": [int(round(x)) for x in box]
+                })
+
+        return tf_annos
+
+
+    def evaluate_single(self, predictions, annos, suffix=''):
+        predictions = self.sort_predictions(predictions)
+        K = len(self._class_names)  # class
+        T = len(self._iou_threshs)  # iou thresh
+        M = len(self._max_dets)  # max detection per image
+        aps = -np.ones((K, T, M))
+        ars = -np.ones((K, T, M))
+        frocs = -np.ones((K, T, M))
+        rec_img_list = -np.ones((K, T, M))
+        for k_i, cls_name in enumerate(self._class_names):
+            if k_i not in predictions:
+                continue
+            dts = predictions[k_i]
+            gts = self.get_cls_gts(annos, k_i)
+            for t_i, thresh in enumerate(self._iou_threshs):  # iou from 0.5 to 0.95, step 0.05
+                for m_i, max_det in enumerate(self._max_dets):
+                    max_rec, ap, froc, rec_img = self.eval(dts, gts, ovthresh=thresh / 100, max_det=max_det)
+                    aps[k_i, t_i, m_i] = ap * 100
+                    ars[k_i, t_i, m_i] = max_rec * 100
+                    frocs[k_i, t_i, m_i] = froc * 100
+                    rec_img_list[k_i, t_i, m_i] = rec_img * 100
+
+        self._result = {
+            'aps' + suffix: aps,
+            'ars' + suffix: ars,
+            'frocs' + suffix: frocs,
+            'rec_img_list' + suffix: rec_img_list
+        }
+
+        record = self.summarize(suffix)
+
+        return record
+
+
+    def summarize(self, suffix):
+        def _summarize(type, iou_t=None, max_det=100):
+            suffix_output_str = suffix if suffix == '' else f' {suffix[1:]}'  # '_acid' to ' acid'
+            i_str = ' {:<25} @[ IoU={:<9} | maxDets={} ] = {:0.5f}'
+            mind = [i for i, mdet in enumerate(self._max_dets) if mdet == max_det]
+            if iou_t is None:
+                tind = slice(len(self._iou_threshs))
+            else:
+                tind = [i for i, iou_thresh in enumerate(self._iou_threshs) if iou_thresh == iou_t]
+            iou_str = '{:0.2f}:{:0.2f}'.format(0.5, 0.95) if iou_t is None else '{:0.2f}'.format(iou_t)
+            det_str = '{:>3d}'.format(max_det) if max_det != float('inf') else 'all'
+
+            if type == 'ap':
+                title_str = 'Average Precision'
+                metric_res = np.mean(self._result['aps' + suffix][:, tind, mind])
+            elif type == 'ar':
+                title_str = 'Average Recall'
+                metric_res = np.mean(self._result['ars' + suffix][:, tind, mind])
+            elif type == 'froc':
+                title_str = 'FROC'
+                metric_res = np.mean(self._result['frocs' + suffix][:, tind, mind])
+            elif type == 'irec':
+                title_str = 'Image Recall'
+                metric_res = np.mean(self._result['rec_img_list' + suffix][:, tind, mind])
+            else:
+                raise ValueError
+            title_str += suffix_output_str
+            metric_res = float(metric_res)
+            # self._logger.info(i_str.format(title_str, iou_str, det_str, metric_res))
+            return metric_res
+
+        ret = OrderedDict()
+        # ap
+        for max_det in self._max_dets:
+            ret[f'AP_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=None, max_det=max_det)
+            ret[f'AP50_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=50, max_det=max_det)
+            ret[f'AP75_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=75, max_det=max_det)
+        # ar
+        for max_det in self._max_dets:
+            ret[f'AR_Top{max_det}' + suffix] = _summarize(type='ar', iou_t=None, max_det=max_det)
+        # froc
+        ret[f'FROC' + suffix] = _summarize(type='froc', iou_t=None, max_det=self._max_dets[-1])
+        ret[f'FROC50' + suffix] = _summarize(type='froc', iou_t=50, max_det=self._max_dets[-1])
+        ret[f'FROC75' + suffix] = _summarize(type='froc', iou_t=75, max_det=self._max_dets[-1])
+
+        # image level recall
+        for max_det in self._max_dets:
+            ret[f'iRecall_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=None, max_det=max_det)
+            ret[f'iRecall50_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=50, max_det=max_det)
+            ret[f'iRecall75_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=75, max_det=max_det)
+        # print(ret)
+        return ret
+
+
+    @staticmethod
+    def sort_predictions(predictions):
+        """
+        sort each class's predictions in score descending order, preserve only image_id and detection boxes
+        """
+        res = {}
+        for cls_id, cls_predictions in predictions.items():
+            image_ids = [x['image_id'] for x in cls_predictions]
+            scores = np.array([x['score'] for x in cls_predictions])
+            boxes = np.array([x['box'] for x in cls_predictions]).astype(float)
+            # sort by score
+            sorted_ind = np.argsort(-scores)
+            dt_boxes = boxes[sorted_ind, :]
+            dt_image_ids = [image_ids[x] for x in sorted_ind]
+            res[cls_id] = {
+                'dt_boxes': dt_boxes,
+                'dt_image_ids': dt_image_ids
+            }
+
+        return res
+
+
+    @staticmethod
+    def get_cls_gts(annos, cls_id):
+        # get this class's gt
+        gt_recs = {}
+        npos = 0
+        for image_id, annos in annos.items():
+            R = [x for x in annos if x['class'] == cls_id]
+            boxes = np.array([x['box'] for x in R]).astype(float)
+            det = [False] * len(R)
+            npos += len(R)
+            gt_recs[image_id] = {'boxes': boxes, 'det': det}
+        return {'gt_recs': gt_recs, 'npos': npos}
+
+
+    @staticmethod
+    def eval(dts, gts, ovthresh=0.5, max_det=np.inf):
+        """
+        eval one class
+        """
+        gt_recs = copy.deepcopy(gts['gt_recs'])
+        dt_boxes = dts['dt_boxes']
+        dt_image_ids = dts['dt_image_ids']
+
+        # go down dts and mark TPs and FPs
+        # recall = tp / npos
+        # preicision = tp / tp + fp
+        # ap = roc of P-R
+        # froc = sum(recall_i) when fp per img = 1/8, 1/4, 1/2, 1, 2, 4, 8
+        # fp_per_img = fp / nimg
+        max_det_count = defaultdict(int)
+        nimg = len(gt_recs)
+        img_m = np.zeros(nimg)  # calculate recall on image level, means patient level recall
+        fps_thresh = nimg * np.array([1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8])
+        npos = gts['npos']
+        tp = []  # true positive, for recall and precision
+        fp = []  # false positive, for precision
+        for i in range(len(dt_image_ids)):
+            image_id = dt_image_ids[i]
+            if max_det_count[image_id] >= max_det:
+                continue
+            max_det_count[image_id] += 1
+            dt_box = dt_boxes[i]
+            R = gt_recs[image_id]
+            gt_boxes = R['boxes']
+            ovmax = -np.inf
+
+            if gt_boxes.size > 0:
+                # compute overlaps
+                # intersection
+                ixmin = np.maximum(gt_boxes[:, 0], dt_box[0])
+                iymin = np.maximum(gt_boxes[:, 1], dt_box[1])
+                ixmax = np.minimum(gt_boxes[:, 2], dt_box[2])
+                iymax = np.minimum(gt_boxes[:, 3], dt_box[3])
+                iw = np.maximum(ixmax - ixmin + 1.0, 0.0)
+                ih = np.maximum(iymax - iymin + 1.0, 0.0)
+                inters = iw * ih
+
+                # union
+                uni = (
+                        (dt_box[2] - dt_box[0] + 1.0) * (dt_box[3] - dt_box[1] + 1.0)
+                        + (gt_boxes[:, 2] - gt_boxes[:, 0] + 1.0) * (gt_boxes[:, 3] - gt_boxes[:, 1] + 1.0)
+                        - inters
+                )
+
+                overlaps = inters / uni
+                ovmax = np.max(overlaps)
+                jmax = np.argmax(overlaps)
+
+            if ovmax > ovthresh:  # match
+                if not R['det'][jmax]:  # gt hasn't been matched
+                    img_m[image_id] = 1
+                    tp.append(1.0)
+                    fp.append(0.0)
+                    R['det'][jmax] = 1
+                else:  # gt has been matched
+                    tp.append(0.0)
+                    fp.append(1.0)
+            else:  # not match
+                tp.append(0.0)
+                fp.append(1.0)
+
+        # compute precision recall
+        tp = np.array(tp)
+        fp = np.array(fp)
+        fp = np.cumsum(fp)
+        tp = np.cumsum(tp)
+        rec = tp / float(npos)
+        # avoid divide by zero in case the first detection matches a difficult
+        # ground truth
+        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
+        ap = SingleCervixDataset.voc_ap(rec, prec)
+
+        # find first idx where fp > fp_thresh, append sentinel values at the end
+        fp = np.concatenate((fp, [np.inf]))
+        fp_idx = [min((fp > x).nonzero()[0][0], len(fp) - 2) for x in fps_thresh]
+        froc = np.mean([rec[idx] for idx in fp_idx])
+        max_rec = rec.max()
+        rec_img = np.sum(img_m) / len(img_m)
+
+        return max_rec, ap, froc, rec_img
+
+
+    @staticmethod
+    def voc_ap(rec, prec):
+        # correct AP calculation
+        # first append sentinel values at the end
+        mrec = np.concatenate(([0.0], rec, [1.0]))
+        mpre = np.concatenate(([0.0], prec, [0.0]))
+
+        # compute the precision envelope
+        for i in range(mpre.size - 1, 0, -1):
+            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
+
+        # to calculate area under PR curve, look for points
+        # where X axis (recall) changes value
+        i = np.where(mrec[1:] != mrec[:-1])[0]
+
+        # and sum (\Delta recall) * prec
+        ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
+
+        return ap
+
+
 @DATASETS.register_module()
-class DualCervixDataset(CustomDataset):
+class DualCervixDataset(CervixDataset):
     """ 
     由acid_coco, iodine_coco构成数据集
     """
     CLASSES = ('lsil', 'hsil')
 
     def __init__(self,
-                prim,
-                acid_ann_file,
-                iodine_ann_file,
-                pipeline,
-                classes,
-                dual_det=False,
-                data_root=None,
-                img_prefix='',
-                proposal_file=None,                
-                test_mode=False,
-                filter_empty_gt=True):
+                 prim,
+                 acid_ann_file,
+                 iodine_ann_file,
+                 pipeline,
+                 classes,
+                 data_root=None,
+                 img_prefix='',
+                 proposal_file=None,                
+                 test_mode=False,
+                 filter_empty_gt=True):
         
         assert prim in ('acid', 'iodine', None)
 
         self.prim = prim
-        self.dual_det = dual_det
         self.acid_ann_file = acid_ann_file
         self.iodine_ann_file = iodine_ann_file
         self.data_root = data_root
@@ -318,45 +631,6 @@ class DualCervixDataset(CustomDataset):
         cv2.imwrite(dst_iodine_path, tmp_iodine_img)
 
 
-    def xyxy2xywh(self, bbox):
-        """Convert ``xyxy`` style bounding boxes to ``xywh`` style for COCO
-        evaluation.
-
-        Args:
-            bbox (numpy.ndarray): The bounding boxes, shape (4, ), in
-                ``xyxy`` order.
-
-        Returns:
-            list[float]: The converted bounding boxes, in ``xywh`` order.
-        """
-
-        _bbox = bbox.tolist()
-        return [
-            _bbox[0],
-            _bbox[1],
-            _bbox[2] - _bbox[0],
-            _bbox[3] - _bbox[1],
-        ]
-    
-
-    def _det2json(self, results):
-        """Convert detection results to COCO json style."""
-        json_results = []
-        for idx in range(len(self)):
-            img_id = self.img_ids[idx]
-            result = results[idx]
-            for label in range(len(result)):
-                bboxes = result[label]
-                for i in range(bboxes.shape[0]):
-                    data = dict()
-                    data['image_id'] = img_id
-                    data['bbox'] = self.xyxy2xywh(bboxes[i])
-                    data['score'] = float(bboxes[i][4])
-                    data['category_id'] = self.cat_ids[label]
-                    json_results.append(data)
-        return json_results
-    
-    
     def results2json(self, results, outfile_prefix):
         """Dump the detection results to a COCO style json file.
 
@@ -418,7 +692,7 @@ class DualCervixDataset(CustomDataset):
         return result_files, tmp_dir
 
 
-    def evaluate(self,
+    def evaluate_coco(self,
                  results,
                  metric='bbox',
                  logger=None,
@@ -427,82 +701,48 @@ class DualCervixDataset(CustomDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=None,
                  metric_items=None):
-        if self.dual_det:
-            #! 双检测的结果[prim_result, aux_result, prim_result, aux_result, ....]
-            prim_results = []
-            aux_results = []
-            for i in range(len(results) // 2):
-                prim_results.extend(results[2 * i])
-                aux_results.extend(results[2 * i + 1])              
+        #! 双检测的结果[prim_result, aux_result, prim_result, aux_result, ....]
+        prim_results = []
+        aux_results = []
+        for i in range(len(results) // 2):
+            prim_results.extend(results[2 * i])
+            aux_results.extend(results[2 * i + 1])    
 
-            prim_metric = self.evaluate_single(prim_results, 
-                                acid= self.prim == "acid",
-                                metric=metric, 
-                                logger=logger,
-                                jsonfile_prefix=jsonfile_prefix,
-                                classwise=classwise,
-                                proposal_nums=proposal_nums,
-                                iou_thrs=iou_thrs,
-                                metric_items=metric_items)
-
-            aux_metric = self.evaluate_single(aux_results, 
-                                acid= self.prim != "acid",
-                                metric=metric, 
-                                logger=logger,
-                                jsonfile_prefix=jsonfile_prefix,
-                                classwise=classwise,
-                                proposal_nums=proposal_nums,
-                                iou_thrs=iou_thrs,
-                                metric_items=metric_items)
-
-            if self.prim == "acid":
-                ret = {
-                    "prim(acid)": prim_metric,
-                    "aux(iodine)": aux_metric
-                }
-            elif self.prim == "iodine":
-                ret = {
-                    "prim(iodine)": prim_metric,
-                    "aux(acid)": aux_metric
-                }
-            else:
-                ret = {
-                    "prim1(acid)": prim_metric,
-                    "prim2(iodine)": aux_metric
-                }
-            
+        if self.prim == "acid":
+            acid_results = prim_results
+            iodine_results = aux_results 
         else:
-            if self.prim == "acid":
-                prim_metric = self.evaluate_single(results, 
-                                    acid=True,
-                                    metric=metric, 
-                                    logger=logger,
-                                    jsonfile_prefix=jsonfile_prefix,
-                                    classwise=classwise,
-                                    proposal_nums=proposal_nums,
-                                    iou_thrs=iou_thrs,
-                                    metric_items=metric_items)
-                ret = {
-                    "prim(acid)": prim_metric}
-            elif self.prim == "iodine":
-                iodine_metric = self.evaluate_single(results, 
-                                    acid=False,
-                                    metric=metric, 
-                                    logger=logger,
-                                    jsonfile_prefix=jsonfile_prefix,
-                                    classwise=classwise,
-                                    proposal_nums=proposal_nums,
-                                    iou_thrs=iou_thrs,
-                                    metric_items=metric_items)
-                ret = {
-                    "prim(iodine)": iodine_metric}
-            else:
-                raise "prim == None is invalid when dual_det = False"
-        
+            acid_results = aux_results
+            iodine_results = prim_results
+
+        acid_metric = self.evaluate_single_coco(acid_results, 
+                            acid= self.prim == "acid",
+                            metric=metric, 
+                            logger=logger,
+                            jsonfile_prefix=jsonfile_prefix,
+                            classwise=classwise,
+                            proposal_nums=proposal_nums,
+                            iou_thrs=iou_thrs,
+                            metric_items=metric_items)
+
+        iodine_metric = self.evaluate_single_coco(iodine_results, 
+                            acid= self.prim != "acid",
+                            metric=metric, 
+                            logger=logger,
+                            jsonfile_prefix=jsonfile_prefix,
+                            classwise=classwise,
+                            proposal_nums=proposal_nums,
+                            iou_thrs=iou_thrs,
+                            metric_items=metric_items)
+
+        ret = dict()
+        ret.update({k + "_acid": v for k,v in acid_metric.items()})
+        ret.update({k + "_iodine": v for k,v in iodine_metric.items()})
+
         return ret
 
 
-    def evaluate_single(self,
+    def evaluate_single_coco(self,
                  results,
                  acid=True,
                  metric='bbox',
@@ -676,10 +916,44 @@ class DualCervixDataset(CustomDataset):
         return eval_results   
 
 
+    def evaluate(self,
+                 results,
+                 metric='bbox',
+                 logger=None,
+                 jsonfile_prefix=None,
+                 classwise=False,
+                 proposal_nums=(100, 300, 1000),
+                 iou_thrs=None,
+                 metric_items=None):
+        prim_results = []
+        aux_results = []
+        for i in range(len(results) // 2):
+            prim_results.extend(results[2 * i])
+            aux_results.extend(results[2 * i + 1])
+
+        acid_results = prim_results if self.prim == "acid" else aux_results
+        iodine_results = aux_results if self.prim == "acid" else iodine_results
+
+        acid_tf_dets = self.convert_dets_format(acid_results)
+        iodine_tf_dets = self.convert_dets_format(iodine_results)
+
+        acid_tf_annos = self.get_format_annos(self.acid_coco)
+        iodine_tf_annos = self.get_format_annos(self.iodine_coco)
+
+        acid_ret = super(DualCervixDataset, self).evaluate_single(acid_tf_dets, acid_tf_annos, "acid")
+        iodine_ret = super(DualCervixDataset, self).evaluate_single(iodine_tf_dets, iodine_tf_dets, "iodine")
+
+        ret = dict()
+        ret.update(acid_ret)
+        ret.update(iodine_ret)
+        return ret
+  
+
 @DATASETS.register_module()
-class SingleCervixDataset(CocoDataset):
+class SingleCervixDataset(CervixDataset):
 
-
+    CLASSES = ('lsil', 'hsil')
+    
     def __init__(self,
                  ann_file,
                  pipeline,
@@ -704,86 +978,6 @@ class SingleCervixDataset(CocoDataset):
         self._class_names = self.get_classes(classes=classes)
 
 
-    def convert_dets_format(self, dets):
-        """ 
-            检测结果的格式：
-                img1_list = [arr_cls1, arr_cls2, ...], 
-                    某个类别为空的arr = np.zeros((0, 5), float32)
-                    不空的时候为 arr = np.([
-                                            [xmin, ymin, xmax, ymax, score],
-                                            [], ...])
-                dets = [img1_list, img2_list, ...]
-            
-            目标格式：
-                {
-                    cls1_ind: list[dict],
-                    cls2_ind: list[dict],
-                    ...
-                }
-
-                dict: { 每个检测框一个字典
-                    "image_id": image_id,
-                    "box": , np.array([xmin, ymin, xmax, ymax], np.float32)
-                    "score": 0.65
-                }
-        """
-        tf_dets = defaultdict(list)
-        for image_id, det in enumerate(dets):
-            for cls_ind, arr in enumerate(det):
-                for j in range(arr.shape[0]):
-                    tf_dets[cls_ind].append({
-                        "image_id": image_id,
-                        "box": arr[j, :4],
-                        "score": float(arr[j, 4])
-                    })
-
-        return tf_dets
-
-
-    def get_format_annos(self):
-        """ 
-            gts原本的格式：
-                COCO
-                self.data_infos[idx] = {
-                    'file_name': '08274633_2016-05-11_2.jpg',
-                    'height': 600, 
-                    'width': 733, 
-                    'id': 6256, 
-                    'filename': '08274633_2016-05-11_2.jpg'
-                }
-                anno = self.get_ann_info(idx)
-                anno = dict(
-                    bboxes=gt_bboxes, np.array float32
-                    labels=gt_labels, np.array int64
-                    bboxes_ignore=gt_bboxes_ignore,
-                    masks=gt_masks_ann,
-                    seg_map=seg_map)
-
-            目标格式：
-                {
-                    image_id: [{
-                        "class": cls_id,
-                        "box": [xmin, ymin, xmax, ymax]
-                    }, {
-                        "class": cls_id,
-                        "box": [xmin, ymin, xmax, ymax]
-                    }, ...]
-                    ...
-                }
-        """
-        tf_annos = defaultdict(list)
-        for idx in range(len(self.data_infos)):
-            image_id = idx
-            anno = self.get_ann_info(idx)  
-            for box, label in zip(anno["bboxes"].tolist(), anno["labels"].tolist()):
-                tf_annos[image_id].append({
-                    "class": label,
-                    "box": [int(round(x)) for x in box]
-                })
-
-        return tf_annos
-
-
     def evaluate(self, 
                  results,
                  metric='bbox',
@@ -793,244 +987,9 @@ class SingleCervixDataset(CocoDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thr=None,
                  metric_items=None):
-
         # tt = super(SingleCervixDataset, self).evaluate(results,metric,logger,jsonfile_prefix,classwise,proposal_nums,iou_thr,metric_items)
-        
         tf_dets = self.convert_dets_format(results)      
-        tf_annos = self.get_format_annos()
+        tf_annos = self.get_format_annos(self.data_infos)
         ret = self.evaluate_single(tf_dets, tf_annos)        
 
         return ret
-
-        
-    def evaluate_single(self, predictions, annos, suffix=''):
-        predictions = self.sort_predictions(predictions)
-        K = len(self._class_names)  # class
-        T = len(self._iou_threshs)  # iou thresh
-        M = len(self._max_dets)  # max detection per image
-        aps = -np.ones((K, T, M))
-        ars = -np.ones((K, T, M))
-        frocs = -np.ones((K, T, M))
-        rec_img_list = -np.ones((K, T, M))
-        for k_i, cls_name in enumerate(self._class_names):
-            if k_i not in predictions:
-                continue
-            dts = predictions[k_i]
-            gts = self.get_cls_gts(annos, k_i)
-            for t_i, thresh in enumerate(self._iou_threshs):  # iou from 0.5 to 0.95, step 0.05
-                for m_i, max_det in enumerate(self._max_dets):
-                    max_rec, ap, froc, rec_img = self.eval(dts, gts, ovthresh=thresh / 100, max_det=max_det)
-                    aps[k_i, t_i, m_i] = ap * 100
-                    ars[k_i, t_i, m_i] = max_rec * 100
-                    frocs[k_i, t_i, m_i] = froc * 100
-                    rec_img_list[k_i, t_i, m_i] = rec_img * 100
-
-        self._result = {
-            'aps' + suffix: aps,
-            'ars' + suffix: ars,
-            'frocs' + suffix: frocs,
-            'rec_img_list' + suffix: rec_img_list
-        }
-
-        record = self.summarize(suffix)
-
-        return record
-
-
-    def summarize(self, suffix):
-        def _summarize(type, iou_t=None, max_det=100):
-            suffix_output_str = suffix if suffix == '' else f' {suffix[1:]}'  # '_acid' to ' acid'
-            i_str = ' {:<25} @[ IoU={:<9} | maxDets={} ] = {:0.5f}'
-            mind = [i for i, mdet in enumerate(self._max_dets) if mdet == max_det]
-            if iou_t is None:
-                tind = slice(len(self._iou_threshs))
-            else:
-                tind = [i for i, iou_thresh in enumerate(self._iou_threshs) if iou_thresh == iou_t]
-            iou_str = '{:0.2f}:{:0.2f}'.format(0.5, 0.95) if iou_t is None else '{:0.2f}'.format(iou_t)
-            det_str = '{:>3d}'.format(max_det) if max_det != float('inf') else 'all'
-
-            if type == 'ap':
-                title_str = 'Average Precision'
-                metric_res = np.mean(self._result['aps' + suffix][:, tind, mind])
-            elif type == 'ar':
-                title_str = 'Average Recall'
-                metric_res = np.mean(self._result['ars' + suffix][:, tind, mind])
-            elif type == 'froc':
-                title_str = 'FROC'
-                metric_res = np.mean(self._result['frocs' + suffix][:, tind, mind])
-            elif type == 'irec':
-                title_str = 'Image Recall'
-                metric_res = np.mean(self._result['rec_img_list' + suffix][:, tind, mind])
-            else:
-                raise ValueError
-            title_str += suffix_output_str
-            metric_res = float(metric_res)
-            # self._logger.info(i_str.format(title_str, iou_str, det_str, metric_res))
-            return metric_res
-
-        ret = OrderedDict()
-        # ap
-        for max_det in self._max_dets:
-            ret[f'AP_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=None, max_det=max_det)
-            ret[f'AP50_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=50, max_det=max_det)
-            ret[f'AP75_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=75, max_det=max_det)
-        # ar
-        for max_det in self._max_dets:
-            ret[f'AR_Top{max_det}' + suffix] = _summarize(type='ar', iou_t=None, max_det=max_det)
-        # froc
-        ret[f'FROC' + suffix] = _summarize(type='froc', iou_t=None, max_det=self._max_dets[-1])
-        ret[f'FROC50' + suffix] = _summarize(type='froc', iou_t=50, max_det=self._max_dets[-1])
-        ret[f'FROC75' + suffix] = _summarize(type='froc', iou_t=75, max_det=self._max_dets[-1])
-
-        # image level recall
-        for max_det in self._max_dets:
-            ret[f'iRecall_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=None, max_det=max_det)
-            ret[f'iRecall50_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=50, max_det=max_det)
-            ret[f'iRecall75_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=75, max_det=max_det)
-        # print(ret)
-        return ret
-
-
-    @staticmethod
-    def sort_predictions(predictions):
-        """
-        sort each class's predictions in score descending order, preserve only image_id and detection boxes
-        """
-        res = {}
-        for cls_id, cls_predictions in predictions.items():
-            image_ids = [x['image_id'] for x in cls_predictions]
-            scores = np.array([x['score'] for x in cls_predictions])
-            boxes = np.array([x['box'] for x in cls_predictions]).astype(float)
-            # sort by score
-            sorted_ind = np.argsort(-scores)
-            dt_boxes = boxes[sorted_ind, :]
-            dt_image_ids = [image_ids[x] for x in sorted_ind]
-            res[cls_id] = {
-                'dt_boxes': dt_boxes,
-                'dt_image_ids': dt_image_ids
-            }
-
-        return res
-
-
-    @staticmethod
-    def get_cls_gts(annos, cls_id):
-        # get this class's gt
-        gt_recs = {}
-        npos = 0
-        for image_id, annos in annos.items():
-            R = [x for x in annos if x['class'] == cls_id]
-            boxes = np.array([x['box'] for x in R]).astype(float)
-            det = [False] * len(R)
-            npos += len(R)
-            gt_recs[image_id] = {'boxes': boxes, 'det': det}
-        return {'gt_recs': gt_recs, 'npos': npos}
-
-
-    @staticmethod
-    def eval(dts, gts, ovthresh=0.5, max_det=np.inf):
-        """
-        eval one class
-        """
-        gt_recs = copy.deepcopy(gts['gt_recs'])
-        dt_boxes = dts['dt_boxes']
-        dt_image_ids = dts['dt_image_ids']
-
-        # go down dts and mark TPs and FPs
-        # recall = tp / npos
-        # preicision = tp / tp + fp
-        # ap = roc of P-R
-        # froc = sum(recall_i) when fp per img = 1/8, 1/4, 1/2, 1, 2, 4, 8
-        # fp_per_img = fp / nimg
-        max_det_count = defaultdict(int)
-        nimg = len(gt_recs)
-        img_m = np.zeros(nimg)  # calculate recall on image level, means patient level recall
-        fps_thresh = nimg * np.array([1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8])
-        npos = gts['npos']
-        tp = []  # true positive, for recall and precision
-        fp = []  # false positive, for precision
-        for i in range(len(dt_image_ids)):
-            image_id = dt_image_ids[i]
-            if max_det_count[image_id] >= max_det:
-                continue
-            max_det_count[image_id] += 1
-            dt_box = dt_boxes[i]
-            R = gt_recs[image_id]
-            gt_boxes = R['boxes']
-            ovmax = -np.inf
-
-            if gt_boxes.size > 0:
-                # compute overlaps
-                # intersection
-                ixmin = np.maximum(gt_boxes[:, 0], dt_box[0])
-                iymin = np.maximum(gt_boxes[:, 1], dt_box[1])
-                ixmax = np.minimum(gt_boxes[:, 2], dt_box[2])
-                iymax = np.minimum(gt_boxes[:, 3], dt_box[3])
-                iw = np.maximum(ixmax - ixmin + 1.0, 0.0)
-                ih = np.maximum(iymax - iymin + 1.0, 0.0)
-                inters = iw * ih
-
-                # union
-                uni = (
-                        (dt_box[2] - dt_box[0] + 1.0) * (dt_box[3] - dt_box[1] + 1.0)
-                        + (gt_boxes[:, 2] - gt_boxes[:, 0] + 1.0) * (gt_boxes[:, 3] - gt_boxes[:, 1] + 1.0)
-                        - inters
-                )
-
-                overlaps = inters / uni
-                ovmax = np.max(overlaps)
-                jmax = np.argmax(overlaps)
-
-            if ovmax > ovthresh:  # match
-                if not R['det'][jmax]:  # gt hasn't been matched
-                    img_m[image_id] = 1
-                    tp.append(1.0)
-                    fp.append(0.0)
-                    R['det'][jmax] = 1
-                else:  # gt has been matched
-                    tp.append(0.0)
-                    fp.append(1.0)
-            else:  # not match
-                tp.append(0.0)
-                fp.append(1.0)
-
-        # compute precision recall
-        tp = np.array(tp)
-        fp = np.array(fp)
-        fp = np.cumsum(fp)
-        tp = np.cumsum(tp)
-        rec = tp / float(npos)
-        # avoid divide by zero in case the first detection matches a difficult
-        # ground truth
-        prec = tp / np.maximum(tp + fp, np.finfo(np.float64).eps)
-        ap = SingleCervixDataset.voc_ap(rec, prec)
-
-        # find first idx where fp > fp_thresh, append sentinel values at the end
-        fp = np.concatenate((fp, [np.inf]))
-        fp_idx = [min((fp > x).nonzero()[0][0], len(fp) - 2) for x in fps_thresh]
-        froc = np.mean([rec[idx] for idx in fp_idx])
-        max_rec = rec.max()
-        rec_img = np.sum(img_m) / len(img_m)
-
-        return max_rec, ap, froc, rec_img
-
-
-    @staticmethod
-    def voc_ap(rec, prec):
-        # correct AP calculation
-        # first append sentinel values at the end
-        mrec = np.concatenate(([0.0], rec, [1.0]))
-        mpre = np.concatenate(([0.0], prec, [0.0]))
-
-        # compute the precision envelope
-        for i in range(mpre.size - 1, 0, -1):
-            mpre[i - 1] = np.maximum(mpre[i - 1], mpre[i])
-
-        # to calculate area under PR curve, look for points
-        # where X axis (recall) changes value
-        i = np.where(mrec[1:] != mrec[:-1])[0]
-
-        # and sum (\Delta recall) * prec
-        ap = np.sum((mrec[i + 1] - mrec[i]) * mpre[i + 1])
-
-        return ap
