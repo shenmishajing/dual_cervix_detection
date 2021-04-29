@@ -3,9 +3,13 @@ _base_ = [
     '../../../_base_/default_runtime.py',
     './dual_base_iodine.py'
 ]
+prim_weights = 1.0
+aux_weights = 0.5
+
 model = dict(
-    type='FasterPrimAuxDetector',
+    type='FasterPrimAuxDualDetector',
     pretrained='torchvision://resnet50',
+    #!
     aug_acid=False,
     
     prim_backbone=dict(
@@ -40,7 +44,7 @@ model = dict(
         out_channels=256,
         num_outs=5),
 
-    rpn_head=dict(
+    prim_rpn_head=dict(
         type='RPNHead',
         in_channels=256,
         feat_channels=256,
@@ -54,11 +58,28 @@ model = dict(
             target_means=[.0, .0, .0, .0],
             target_stds=[1.0, 1.0, 1.0, 1.0]),
         loss_cls=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(type='L1Loss', loss_weight=1.0)),
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * prim_weights),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0 * prim_weights)),
+    
+    aux_rpn_head=dict(
+        type='RPNHead',
+        in_channels=256,
+        feat_channels=256,
+        anchor_generator=dict(
+            type='AnchorGenerator',
+            scales=[8],
+            ratios=[0.5, 1.0, 2.0],
+            strides=[4, 8, 16, 32, 64]),
+        bbox_coder=dict(
+            type='DeltaXYWHBBoxCoder',
+            target_means=[.0, .0, .0, .0],
+            target_stds=[1.0, 1.0, 1.0, 1.0]),
+        loss_cls=dict(
+            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0 * aux_weights),
+        loss_bbox=dict(type='L1Loss', loss_weight=1.0 * aux_weights)),
 
     roi_head=dict(
-        type='DualCervixPrimAuxRoiHead',
+        type='DualCervixDualDetPrimAuxRoiHead',
         attention_cfg=dict(
             in_channels=256, 
             out_channels=256,
@@ -77,14 +98,20 @@ model = dict(
             featmap_strides=[4, 8, 16, 32]),
 
         aux_bbox_roi_extractor=dict(
+            type='SingleRoIExtractor',
+            roi_layer=dict(type='RoIAlign', output_size=7, sampling_ratio=0),
+            out_channels=256,
+            featmap_strides=[4, 8, 16, 32]),
+
+        bridge_bbox_droi_extractor=dict(
             type='SingleDeformRoIExtractor',
             #! spatial_scale 会根据featmap_strides自动添加的，gamma不知道啥意思
             roi_layer=dict(type='DeformRoIPool', output_size=7, sampling_ratio=0, gamma=0.1),
             out_channels=256,
             featmap_strides=[4, 8, 16, 32],
             finest_scale=56),
-            
-        bbox_head=dict(
+
+        prim_bbox_head=dict(
             type='Shared2FCBBoxHead',
             in_channels=512, #! 256 + 256
             fc_out_channels=1024,
@@ -96,8 +123,23 @@ model = dict(
                 target_stds=[0.1, 0.1, 0.2, 0.2]),
             reg_class_agnostic=False,
             loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='L1Loss', loss_weight=1.0))))
+                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0 * prim_weights),
+            loss_bbox=dict(type='L1Loss', loss_weight=1.0 * prim_weights)),
+
+        aux_bbox_head=dict(
+            type='Shared2FCBBoxHead',
+            in_channels=256, 
+            fc_out_channels=1024,
+            roi_feat_size=7,
+            num_classes=1,
+            bbox_coder=dict(
+                type='DeltaXYWHBBoxCoder',
+                target_means=[0., 0., 0., 0.],
+                target_stds=[0.1, 0.1, 0.2, 0.2]),
+            reg_class_agnostic=False,
+            loss_cls=dict(
+                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0 * aux_weights),
+            loss_bbox=dict(type='L1Loss', loss_weight=1.0 * aux_weights))))
 
 
 train_cfg = dict(
@@ -155,4 +197,7 @@ test_cfg = dict(
         max_per_img=100)
     # soft-nms is also supported for rcnn testing
     # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
+)
+data = dict(
+    samples_per_gpu=1
 )
