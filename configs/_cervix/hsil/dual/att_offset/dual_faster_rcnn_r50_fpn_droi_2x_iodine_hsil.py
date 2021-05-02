@@ -1,5 +1,5 @@
 _base_ = [
-    './dual_base_acid.py'
+    '../dual_base_iodine.py'
 ]
 prim_weights = 1.0
 aux_weights = 0.5
@@ -8,7 +8,7 @@ model = dict(
     type='FasterPrimAuxDualDetector',
     pretrained='torchvision://resnet50',
     #!
-    aug_acid=True,
+    aug_acid=False,
     
     prim_backbone=dict(
         type='ResNet',

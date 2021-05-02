@@ -66,3 +66,5 @@ data = dict(
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')
+#!
+optimizer = dict(lr=0.001)

@@ -1,5 +1,5 @@
 _base_ = [
-    '../dual_faster_rcnn_r50_fpn_droi_2x_acid_hsil.py'
+    '../att_offset/dual_faster_rcnn_r50_fpn_droi_2x_acid_hsil.py'
 ]
 
 model = dict(
