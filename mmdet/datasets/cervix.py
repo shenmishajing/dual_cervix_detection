@@ -960,7 +960,7 @@ class DualCervixDataset(CervixDataset):
             aux_results.extend(results[2 * i + 1])
 
         acid_results = prim_results if self.prim == "acid" else aux_results
-        iodine_results = aux_results if self.prim == "acid" else iodine_results
+        iodine_results = aux_results if self.prim == "acid" else prim_results
 
         acid_tf_dets = self.convert_dets_format(acid_results)
         iodine_tf_dets = self.convert_dets_format(iodine_results)
