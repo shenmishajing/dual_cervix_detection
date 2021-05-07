@@ -24,9 +24,9 @@ def single_gpu_test(model,
     dataset = data_loader.dataset
     prog_bar = mmcv.ProgressBar(len(dataset))
 
-    dual_det = hasattr(dataset, "dual_det")
+    prim = hasattr(dataset, "prim")
     
-    if not dual_det: 
+    if not prim: 
         for i, data in enumerate(data_loader):
             with torch.no_grad():
                 result = model(return_loss=False, rescale=True, **data)

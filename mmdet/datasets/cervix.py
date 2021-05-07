@@ -379,9 +379,8 @@ class DualCervixDataset(CervixDataset):
                  proposal_file=None,                
                  test_mode=False,
                  filter_empty_gt=True):
-        
         assert prim in ('acid', 'iodine', None)
-
+        #! single_gpu_test 依赖prim
         self.prim = prim
         self.acid_ann_file = acid_ann_file
         self.iodine_ann_file = iodine_ann_file
