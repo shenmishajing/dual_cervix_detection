@@ -5,14 +5,11 @@ from mmcv.cnn import normal_init
 
 
 def build_proposaloffset(offset_cfg):
+    support_offset_type = ("ProposalOffsetXY", "ProposalOffsetXYXY", "ProposalOffsetXYWH")
     offset_type = offset_cfg.pop("offset_type")
 
-    if offset_type == "xy":
-        proposal_offset = ProposalOffsetXY(**offset_cfg)
-    elif offset_type == "xyxy":
-        proposal_offset = ProposalOffsetXYXY(**offset_cfg)
-    elif offset_type == "xywh":
-        proposal_offset = ProposalOffsetXYWH(**offset_cfg)
+    if offset_type in support_offset_type:
+        proposal_offset = eval("offset_type(**offset_cfg)")
     else:
         raise "offset_type = {} is not support".format(offset_type)
 
@@ -55,10 +52,6 @@ class ProposalOffset(nn.Module, metaclass=ABCMeta):
 class ProposalOffsetXY(ProposalOffset):
 
 
-    def __init__(self, in_channels, out_channels, roi_feat_area, gamma=0.1):
-        super(ProposalOffsetXY, self).__init__(in_channels, out_channels, roi_feat_area, gamma)
-
-
     def init_layers(self):
         self.offset = nn.ModuleList([
                 nn.Linear(self.roi_feat_area * self.in_channels, self.out_channels),
@@ -95,10 +88,6 @@ class ProposalOffsetXY(ProposalOffset):
 
 
 class ProposalOffsetXYXY(ProposalOffset):
-
-
-    def __init__(self, in_channels, out_channels, roi_feat_area, gamma=0.1):
-        super(ProposalOffsetXYXY, self).__init__(in_channels, out_channels, roi_feat_area, gamma)
 
 
     def init_layers(self):
@@ -151,10 +140,6 @@ class ProposalOffsetXYXY(ProposalOffset):
 class ProposalOffsetXYWH(ProposalOffset):
 
 
-    def __init__(self, in_channels, out_channels, roi_feat_area, gamma=0.1):
-        super(ProposalOffsetXYWH, self).__init__(in_channels, out_channels, roi_feat_area, gamma)
-
-
     def init_layers(self):
         self.offset1 = nn.ModuleList([
             nn.Linear(self.roi_feat_area * self.in_channels, self.out_channels),
@@ -202,7 +187,6 @@ class ProposalOffsetXYWH(ProposalOffset):
         rois_coord = torch.cat([rois_xy, rois_xy + rois_wh], dim=-1)
 
         return rois_coord
-
 
 
 class PrimAuxAttention(nn.Module):
