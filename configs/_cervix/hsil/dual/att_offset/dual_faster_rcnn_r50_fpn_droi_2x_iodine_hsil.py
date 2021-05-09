@@ -85,6 +85,7 @@ model = dict(
             shared=False),
 
         offset_cfg=dict(
+            type="ProposalOffsetXY",
             in_channels=256, 
             out_channels=256, 
             roi_feat_area=7*7), #! squared roi_feat_size(in bbox_head)
