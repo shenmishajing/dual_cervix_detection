@@ -101,7 +101,7 @@ model = dict(
             out_channels=256,
             featmap_strides=[4, 8, 16, 32]),
 
-        bridge_bbox_droi_extractor=dict(
+        bridge_bbox_roi_extractor=dict(
             type='SingleDeformRoIExtractor',
             #! spatial_scale 会根据featmap_strides自动添加的，gamma不知道啥意思
             roi_layer=dict(type='DeformRoIPool', output_size=7, sampling_ratio=0, gamma=0.1),

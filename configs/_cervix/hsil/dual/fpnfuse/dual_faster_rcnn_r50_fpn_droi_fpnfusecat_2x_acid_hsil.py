@@ -7,6 +7,7 @@ model = dict(
         fpn_fuser_cfg=dict(
             in_channels=512, #! prim + aux = 256 + 256
             out_channels=256,
-            fuse_type="cat"
+            with_conv=True,
+            fuse_type="cat",
         ),
      ))

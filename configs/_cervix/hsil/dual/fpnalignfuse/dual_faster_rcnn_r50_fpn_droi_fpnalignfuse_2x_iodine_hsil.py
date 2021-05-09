@@ -5,6 +5,7 @@ _base_ = [
 model = dict(
     roi_head=dict(
         fpn_fuser_cfg=dict(
+            type="FPNFeatureFuser",
             roi_feat_size=7,
             num_levels=4,
             naive_fuse=False

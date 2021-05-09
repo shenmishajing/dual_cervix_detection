@@ -5,7 +5,7 @@ _base_ = [
 model = dict(
     roi_head=dict(
         offset_cfg=None,
-        bridge_bbox_droi_extractor=None,
+        bridge_bbox_roi_extractor=None,
         prim_bbox_head=dict(
             in_channels=256 
             )))
