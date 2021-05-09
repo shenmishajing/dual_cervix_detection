@@ -5,216 +5,9 @@ from ..builder import HEADS, build_head, build_roi_extractor
 from .base_roi_head import BaseRoIHead
 from .test_mixins import BBoxTestMixin
 from mmcv.cnn import normal_init
-
-
-class PrimAuxAttention(nn.Module):
-    #TODO augment feature mutually
-
-    def __init__(self, in_channels, out_channels, num_levels=5, shared=False):
-        #TODO add support when in_channels is a list 
-        super(PrimAuxAttention, self).__init__()
-        assert isinstance(in_channels, int), "type of in_channels must be int"
-        assert isinstance(out_channels, int), "type of out_channels must be int"
-
-        self.shared = shared
-        self.num_levels = num_levels
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.init_layers()
-
-
-    def init_layers(self):
-        if self.shared:
-            self.att = nn.Conv2d(self.in_channels, self.out_channels, kernel_size=3, padding=1)
-        else:
-            self.att_list = nn.ModuleList([
-                nn.Conv2d(self.in_channels, self.out_channels, kernel_size=3, padding=1)
-                for _ in range(self.num_levels)
-            ]) 
-
-
-    def init_weights(self):
-        if self.shared:
-            normal_init(self.att, std=0.01)
-        else:
-            for i in range(self.num_levels):
-                normal_init(self.att_list[i], std=0.01)
-
-
-    def forward(self, prim_feats, aux_feats):
-        """using one feature to augment another feature
-
-        Args:
-            prim_feats (list[tensor]): features in different levels 
-            aux_feats (list[tensor]): features in different levels
-
-        Returns:
-            list[tensor]: features augmented
-        """
-        if self.shared:
-            aug_feats = [
-                (self.att(aux_feats[i]).sigmoid() + 1) * prim_feats[i]
-                for i in range(self.num_levels)
-            ]
-        else:
-            aug_feats = [
-                (self.att_list[i](aux_feats[i]).sigmoid() + 1) * prim_feats[i]
-                for i in range(self.num_levels)
-            ]
-        
-        return aug_feats
-
-
-class ProposalOffset(nn.Module):
-
-
-    def __init__(self, in_channels, out_channels, roi_feat_area):
-        super(ProposalOffset, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.roi_feat_area = roi_feat_area
-        self.init_layers()
-
-
-    def init_layers(self):
-        self.offset = nn.ModuleList([
-            nn.Linear(self.roi_feat_area * self.in_channels, self.out_channels),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.out_channels, self.out_channels),
-            nn.ReLU(inplace=True),
-            nn.Linear(self.out_channels, 2)
-        ])
-
-
-    def init_weights(self):
-        for m in self.offset:
-            if isinstance(m, nn.Linear):
-                normal_init(m, std=0.01)
-
-
-    def forward(self, x):
-        x = x.view(-1, self.roi_feat_area * self.in_channels)
-        for m in self.offset:
-            x = m(x)
-
-        return x
-
-
-class FPNFeatureFuser(nn.Module):
-
-
-    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, fuse_type=None, naive_fuse=True):
-        super(FPNFeatureFuser, self).__init__()
-        #! None is sum
-        assert fuse_type in (None, "cat"), "fuse_type is not in (None, 'cat)"
-        if fuse_type == "cat":
-            assert (in_channels is not None and out_channels is not None), "when fuse_type = cat, in_channels and out_channels must be not None"
-
-        self.num_levels = num_levels
-        self.output_size = (roi_feat_size, roi_feat_size)
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.fuse_type = fuse_type
-        self.naive_fuse_flag = naive_fuse
-        self.finest_scale = 56
-        self.init_layers()
-
-    
-    def init_layers(self):
-        self.pool_list = nn.ModuleList([
-            nn.FractionalMaxPool2d(3, output_size=self.output_size)
-            for _ in range(self.num_levels)
-        ])
-
-        if self.fuse_type == "cat":
-            self.conv = nn.Conv2d(self.in_channels, self.out_channels, 1, 1)
-
-
-    def init_weights(self):
-        if self.fuse_type == "cat":
-            normal_init(self.conv, std=0.01)
-
-
-    def map_roi_levels(self, rois, num_levels):
-        """Map rois to corresponding feature levels by scales.
-
-        - scale < finest_scale * 2: level 0
-        - finest_scale * 2 <= scale < finest_scale * 4: level 1
-        - finest_scale * 4 <= scale < finest_scale * 8: level 2
-        - scale >= finest_scale * 8: level 3
-
-        Args:
-            rois (Tensor): Input RoIs, shape (k, 5).
-            num_levels (int): Total level number.
-
-        Returns:
-            Tensor: Level index (0-based) of each RoI, shape (k, )
-        """
-        scale = torch.sqrt(
-            (rois[:, 3] - rois[:, 1]) * (rois[:, 4] - rois[:, 2]))
-        target_lvls = torch.floor(torch.log2(scale / self.finest_scale + 1e-6))
-        target_lvls = target_lvls.clamp(min=0, max=num_levels - 1).long()
-        return target_lvls
-
-
-    def naive_fuse(self, prim_bbox_feats, aux_global_feats):
-        tmp = self.pool_list[0](aux_global_feats[0])
-        for i in range(1, self.num_levels):
-            tmp += self.pool_list[i](aux_global_feats[i])
-        tmp /= self.num_levels
-        
-        # prim_bbox_feats 按图片的顺序放置 [B * 512, 256, 7, 7]
-        # [512(img_1), 512(img_2), ..., 512(img_B)]
-        n1 = prim_bbox_feats.shape[0]
-        n2 = tmp.shape[0]
-        aux_global_feats_repeated = torch.repeat_interleave(tmp, n1 // n2, dim=0)
-        if self.fuse_type is None:
-            out = prim_bbox_feats + aux_global_feats_repeated
-        elif self.fuse_type == "cat":
-            out = torch.cat([prim_bbox_feats, aux_global_feats_repeated], dim=1)
-            out = self.conv(out)
-        
-        return out
-
-
-    def align_fuse(self, prim_bbox_feats, aux_global_feats, prim_rois):
-        aux_feats_list = []
-        for i in range(self.num_levels):
-            aux_feats_list.append(
-                self.pool_list[i](aux_global_feats[i])
-            )
-        target_lvls = self.map_roi_levels(prim_rois, self.num_levels)
-        # prim_bbox_feats 按图片的顺序放置 [B * 512, 256, 7, 7]
-        # [512(img_1), 512(img_2), ..., 512(img_B)]
-
-        #! [lvl1_feats, lvl2_feats, ...] - > shape = [num_level, B, 256, 7, 7]
-        aux_feats_stack = torch.stack(aux_feats_list, dim=0)
-        num_imgs = aux_global_feats[0].shape[0]
-        num_proposals_all_imgs = prim_bbox_feats.shape[0]
-        repeat_times = num_proposals_all_imgs // num_imgs
-        gather_aux_feats = []
-        for i in range(num_imgs):
-            idx = prim_rois[i * repeat_times: (i + 1) * repeat_times, 0].long()
-            aux_feats_gathered = aux_feats_stack[idx, i]
-            gather_aux_feats.append(aux_feats_gathered)
-        aux_feats = torch.cat(gather_aux_feats, dim=0)
-
-        if self.fuse_type is None:
-            out = prim_bbox_feats + aux_feats
-        elif self.fuse_type == "cat":
-            out = torch.cat([prim_bbox_feats, aux_feats], dim=1)
-            out = self.conv(out)
-        
-        return out
-
-
-    def forward(self, prim_bbox_feats, aux_global_feats, prim_rois):
-        if self.naive_fuse_flag:
-            out = self.naive_fuse(prim_bbox_feats, aux_global_feats)
-        else:
-            out = self.align_fuse(prim_bbox_feats, aux_global_feats, prim_rois)
-
-        return out
+from .dual_cervix_roi_head_utils import build_proposaloffset, PrimAuxAttention, build_fpnfeaturefuser
+import os
+import numpy as np 
 
 
 @HEADS.register_module()
@@ -244,7 +37,7 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def init_proposalOffset(self, offset_cfg):
-        self.proposalOffset = ProposalOffset(**offset_cfg)
+        self.proposalOffset = build_proposaloffset(**offset_cfg)
 
 
     def init_bbox_head(self, prim_bbox_roi_extractor, aux_bbox_roi_extractor, bbox_head):
@@ -454,7 +247,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                 aux_bbox_roi_extractor, 
                 prim_bbox_head,
                 aux_bbox_head,
-                bridge_bbox_droi_extractor=None,
+                bridge_bbox_roi_extractor=None,
                 attention_cfg=None, 
                 offset_cfg=None,
                 fpn_fuser_cfg=None,
@@ -462,18 +255,24 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                 test_cfg=None):
         super(BaseRoIHead, self).__init__()
 
-        if (offset_cfg is None and bridge_bbox_droi_extractor is not None) or (offset_cfg is not None and bridge_bbox_droi_extractor is None):
-            raise "offset_cfg and bridge_bbox_droi_extractor must be None or not None at the same time"
+        if (offset_cfg is None and bridge_bbox_roi_extractor is not None) or (offset_cfg is not None and bridge_bbox_roi_extractor is None):
+            raise "offset_cfg and bridge_bbox_roi_extractor must be None or not None at the same time"
+        
+        if bridge_bbox_roi_extractor is not None:
+            self.bridge_bbox_roi_extractor_type = bridge_bbox_roi_extractor["type"]
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.init_attention(attention_cfg)
         self.init_proposalOffset(offset_cfg)
         self.init_FPNFeatureFuser(fpn_fuser_cfg)
-        self.init_bbox_head(prim_bbox_roi_extractor, aux_bbox_roi_extractor, bridge_bbox_droi_extractor, prim_bbox_head, aux_bbox_head)
+        self.init_bbox_head(prim_bbox_roi_extractor, aux_bbox_roi_extractor, bridge_bbox_roi_extractor, prim_bbox_head, aux_bbox_head)
         self.init_assigner_sampler()
 
         self.init_weights()
+       
+        # 用于proposal可视化
+        self.proposal_idx = 0
 
 
     def init_attention(self, attention_cfg):
@@ -485,29 +284,29 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
     def init_proposalOffset(self, offset_cfg):
         if offset_cfg is not None:
-            self.proposalOffset = ProposalOffset(**offset_cfg)
+            self.proposalOffset = build_proposaloffset(**offset_cfg)
         else:
             self.proposalOffset = None
 
 
     def init_FPNFeatureFuser(self, fpn_fuser_cfg):
         if fpn_fuser_cfg is not None:
-            self.fpn_fuser = FPNFeatureFuser(**fpn_fuser_cfg)
+            self.fpn_fuser = build_fpnfeaturefuser(**fpn_fuser_cfg)
         else:
             self.fpn_fuser = None
 
 
     def init_bbox_head(self, 
                        prim_bbox_roi_extractor, aux_bbox_roi_extractor, 
-                       bridge_bbox_droi_extractor, 
+                       bridge_bbox_roi_extractor, 
                        prim_bbox_head, aux_bbox_head):
         self.prim_bbox_roi_extractor = build_roi_extractor(prim_bbox_roi_extractor)
         self.aux_bbox_roi_extractor = build_roi_extractor(aux_bbox_roi_extractor)
         
-        if bridge_bbox_droi_extractor:
-            self.bridge_bbox_droi_extractor = build_roi_extractor(bridge_bbox_droi_extractor)
+        if bridge_bbox_roi_extractor:
+            self.bridge_bbox_roi_extractor = build_roi_extractor(bridge_bbox_roi_extractor)
         else:
-            self.bridge_bbox_droi_extractor = None
+            self.bridge_bbox_roi_extractor = None
         
         self.prim_bbox_head = build_head(prim_bbox_head)
         self.aux_bbox_head = build_head(aux_bbox_head)
@@ -538,8 +337,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         self.prim_bbox_roi_extractor.init_weights()
         self.aux_bbox_roi_extractor.init_weights()
         
-        if self.bridge_bbox_droi_extractor:
-            self.bridge_bbox_droi_extractor.init_weights()
+        if self.bridge_bbox_roi_extractor:
+            self.bridge_bbox_roi_extractor.init_weights()
         
         self.prim_bbox_head.init_weights()
         self.aux_bbox_head.init_weights()
@@ -613,16 +412,24 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             prim_feats[:self.prim_bbox_roi_extractor.num_inputs], prim_rois)
         
 
-        if self.bridge_bbox_droi_extractor:
+        if self.bridge_bbox_roi_extractor:
             if self.fpn_fuser:
-                prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, aux_feats, prim_rois)
+                prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, prim_feats[:self.prim_bbox_roi_extractor.num_inputs], 
+                                                aux_feats[:self.aux_bbox_roi_extractor.num_inputs], prim_rois)
                 offset = self.proposalOffset(prim_bbox_feats_)
             else:
                 offset = self.proposalOffset(prim_bbox_feats)
-            n = prim_rois.shape[0]
-            out_size = prim_bbox_feats.shape[-1]
-            offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
-            bridge_bbox_feats = self.bridge_bbox_droi_extractor(aux_feats[:self.bridge_bbox_droi_extractor.num_inputs], prim_rois, offset)
+            
+            VIS = False
+            if VIS:
+                # print(prim_rois[0, :])
+                # print(prim_rois.shape)
+                # print(offset[:5, :, 0, 0])
+                # print(offset.shape)
+                self.proposals_vis(prim_rois, offset)
+
+            bridge_bbox_feats = self._extract_bridge_bbox_feats(prim_bbox_feats, aux_feats, prim_rois, offset)
+
             prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)
 
         prim_cls_score, prim_bbox_pred = self.prim_bbox_head(prim_bbox_feats)
@@ -632,6 +439,23 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             aux_cls_score=aux_cls_score, aux_bbox_pred=aux_bbox_pred, aux_bbox_feats=aux_bbox_feats)
         
         return bbox_results
+
+
+    def _extract_bridge_bbox_feats(self, prim_bbox_feats, aux_feats, prim_rois, offset):
+        if self.bridge_bbox_roi_extractor_type == "SingleDeformRoIExtractor":
+            n = prim_rois.shape[0]
+            out_size = prim_bbox_feats.shape[-1]
+            offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
+            bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], prim_rois, offset)
+
+        elif self.bridge_bbox_roi_extractor_type == "SingleRoIExtractor":
+            prim_rois = self.proposalOffset.apply_offset(prim_rois, offsets)
+            bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], prim_rois)
+
+        else:
+            raise "roi_extractor_type = {} is not support".format(self.bridge_bbox_roi_extractor_type)
+        
+        return bridge_bbox_feats
 
 
     def _bbox_forward_train(self, prim_feats, aux_feats, 
@@ -771,3 +595,26 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         ]
         #! list中是每张图像的检测框
         return prim_results, aux_results
+
+
+    def proposals_vis(self, rois, offset):
+        print(rois.shape, offset.shape)
+
+        gamma = 0.1
+        offset_tmp = gamma * (rois[:, 3:5] - rois[:, 1:3]) * offset
+        aux_proposal_coord = torch.cat([
+            rois[:, 1:3] + offset_tmp, rois[:, 3:5] + offset_tmp
+        ], dim=-1)
+        
+        prim_proposal_coord = rois[:, 1:5]
+        exp_dir = "/data2/luochunhua/od/mmdetection/work_dirs/dual_faster_rcnn_r50_fpn_droi_fpnfusecat_noatt_2x_gamma3_acid_hsil/proposals/"
+       
+        if not os.path.exists(exp_dir):
+            os.mkdir(exp_dir)
+
+        aux_proposal_path = os.path.join(exp_dir, "aux_{}.npz".format(str(self.proposal_idx)))
+        prim_proposal_path = os.path.join(exp_dir, "prim_{}.npz".format(str(self.proposal_idx)))
+        np.savez(aux_proposal_path, aux_proposal_coord.cpu().numpy())
+        np.savez(prim_proposal_path, prim_proposal_coord.cpu().numpy())
+
+        self.proposal_idx += 1
