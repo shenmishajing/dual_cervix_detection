@@ -9,7 +9,7 @@ def build_proposaloffset(offset_cfg):
     offset_type = offset_cfg.pop("offset_type")
 
     if offset_type in support_offset_type:
-        proposal_offset = eval("offset_type(**offset_cfg)")
+        proposal_offset = eval("{}(**offset_cfg)".format(offset_type))
     else:
         raise "offset_type = {} is not support".format(offset_type)
 
@@ -247,10 +247,24 @@ class PrimAuxAttention(nn.Module):
         return aug_feats
 
 
+#-----------------------------------------------------------------------
+
+def build_fpnfeaturefuser(fpn_fuser_cfg):
+    support_type = ("FPNFeatureFuser", "DualFPNFeatureFuser")
+    fpn_fuser_type = fpn_fuser_cfg.pop("type")
+
+    if fpn_fuser_type in support_type:
+        fpn_fuser = eval("{}(**fpn_fuser_cfg)".format(fpn_fuser_type))
+    else:
+        raise "fpn_fuser_type = {} is not support.".format(fpn_fuser_type)
+    
+    return fpn_fuser
+
+
 class FPNFeatureFuser(nn.Module):
 
 
-    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, fuse_type=None, naive_fuse=True):
+    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, with_conv=False, fuse_type=None, naive_fuse=True, finest_scale=56):
         super(FPNFeatureFuser, self).__init__()
         #! None is sum
         assert fuse_type in (None, "cat"), "fuse_type is not in (None, 'cat)"
@@ -261,9 +275,10 @@ class FPNFeatureFuser(nn.Module):
         self.output_size = (roi_feat_size, roi_feat_size)
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.with_conv = with_conv
         self.fuse_type = fuse_type
         self.naive_fuse_flag = naive_fuse
-        self.finest_scale = 56
+        self.finest_scale = finest_scale
         self.init_layers()
 
     
@@ -273,12 +288,12 @@ class FPNFeatureFuser(nn.Module):
             for _ in range(self.num_levels)
         ])
 
-        if self.fuse_type == "cat":
+        if self.fuse_type == "cat" and self.with_conv:
             self.conv = nn.Conv2d(self.in_channels, self.out_channels, 1, 1)
-
+            
 
     def init_weights(self):
-        if self.fuse_type == "cat":
+        if self.fuse_type == "cat" and self.with_conv:
             normal_init(self.conv, std=0.01)
 
 
@@ -319,7 +334,11 @@ class FPNFeatureFuser(nn.Module):
             out = prim_bbox_feats + aux_global_feats_repeated
         elif self.fuse_type == "cat":
             out = torch.cat([prim_bbox_feats, aux_global_feats_repeated], dim=1)
-            out = self.conv(out)
+            if self.with_conv:
+                out = self.conv(out)
+            else:
+                #! 没有经过conv， 输出的特征数就是512了
+                pass
         
         return out
 
@@ -350,15 +369,100 @@ class FPNFeatureFuser(nn.Module):
             out = prim_bbox_feats + aux_feats
         elif self.fuse_type == "cat":
             out = torch.cat([prim_bbox_feats, aux_feats], dim=1)
-            out = self.conv(out)
-        
+            if self.with_conv:
+                out = self.conv(out)
+            else:
+                #! 没有经过conv， 输出的特征数就是512了
+                pass  
+
         return out
 
 
-    def forward(self, prim_bbox_feats, aux_global_feats, prim_rois):
+    def forward(self, prim_bbox_feats, prim_global_feats, aux_global_feats, prim_rois):
         if self.naive_fuse_flag:
             out = self.naive_fuse(prim_bbox_feats, aux_global_feats)
         else:
             out = self.align_fuse(prim_bbox_feats, aux_global_feats, prim_rois)
+
+        return out
+
+
+class DualFPNFeatureFuser(nn.Module):
+
+
+    def __init__(self, roi_feat_size, num_levels, in_channels=None, out_channels=None, with_conv=False, fuse_type=None, naive_fuse=True, finest_scale=56):
+        super(DualFPNFeatureFuser, self).__init__()
+        assert naive_fuse , "align fuse is not support, only support naive fuse in DualFPNFeatureFuser"
+        #! None is sum
+        assert fuse_type in (None, "cat"), "fuse_type is not in (None, 'cat)"
+        if fuse_type == "cat":
+            assert (in_channels is not None and out_channels is not None), "when fuse_type = cat, in_channels and out_channels must be not None"
+
+        self.num_levels = num_levels
+        self.output_size = (roi_feat_size, roi_feat_size)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+        self.with_conv = with_conv
+        self.fuse_type = fuse_type
+        self.naive_fuse_flag = naive_fuse
+        self.finest_scale = finest_scale
+        self.init_layers()
+
+    
+    def init_layers(self):
+        self.prim_pool_list = nn.ModuleList([
+            nn.FractionalMaxPool2d(3, output_size=self.output_size)
+            for _ in range(self.num_levels)
+        ])
+
+        self.aux_pool_list = nn.ModuleList([
+            nn.FractionalMaxPool2d(3, output_size=self.output_size)
+            for _ in range(self.num_levels)
+        ])
+
+        if self.fuse_type == "cat" and self.with_conv:
+            self.conv = nn.Conv2d(self.in_channels, self.out_channels, 1, 1)
+            
+
+    def init_weights(self):
+        if self.fuse_type == "cat" and self.with_conv:
+            normal_init(self.conv, std=0.01)
+
+
+    def naive_fuse(self, prim_bbox_feats, prim_global_feats, aux_global_feats):
+        aux_tmp = self.aux_pool_list[0](aux_global_feats[0])
+        for i in range(1, self.num_levels):
+            aux_tmp += self.aux_pool_list[i](aux_global_feats[i])
+        aux_tmp /= self.num_levels
+        
+        prim_tmp = self.prim_pool_list[0](prim_global_feats[0])
+        for i in range(1, self.num_levels):
+            prim_tmp += self.prim_pool_list[i](prim_global_feats[i])
+        prim_tmp /= self.num_levels
+
+        # prim_bbox_feats 按图片的顺序放置 [B * 512, 256, 7, 7]
+        # [512(img_1), 512(img_2), ..., 512(img_B)]
+        n1 = prim_bbox_feats.shape[0]
+        n2 = aux_tmp.shape[0]
+        aux_global_feats_repeated = torch.repeat_interleave(aux_tmp, n1 // n2, dim=0)
+        prim_global_feats_repeated = torch.repeat_interleave(prim_tmp, n1 // n2, dim=0)
+        if self.fuse_type is None:
+            out = prim_bbox_feats + aux_global_feats_repeated + prim_global_feats_repeated
+        elif self.fuse_type == "cat":
+            out = torch.cat([prim_bbox_feats, aux_global_feats_repeated, prim_global_feats_repeated], dim=1)
+            if self.with_conv:
+                out = self.conv(out)
+            else:
+                #! 没有经过conv， 输出的特征数就是756了
+                pass
+        
+        return out
+
+
+    def forward(self, prim_bbox_feats, prim_global_feats, aux_global_feats, prim_rois):
+        if self.naive_fuse_flag:
+            out = self.naive_fuse(prim_bbox_feats, prim_global_feats, aux_global_feats)
+        else:
+            raise "align fuse is not support"
 
         return out
