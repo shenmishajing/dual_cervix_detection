@@ -6,7 +6,7 @@ from mmcv.cnn import normal_init
 
 def build_proposaloffset(offset_cfg):
     support_offset_type = ("ProposalOffsetXY", "ProposalOffsetXYXY", "ProposalOffsetXYWH")
-    offset_type = offset_cfg.pop("offset_type")
+    offset_type = offset_cfg.pop("type")
 
     if offset_type in support_offset_type:
         proposal_offset = eval("{}(**offset_cfg)".format(offset_type))
@@ -20,6 +20,7 @@ class ProposalOffset(nn.Module, metaclass=ABCMeta):
 
 
     def __init__(self, in_channels, out_channels, roi_feat_area, gamma=0.1):
+        super(ProposalOffset, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.roi_feat_area = roi_feat_area
@@ -188,6 +189,7 @@ class ProposalOffsetXYWH(ProposalOffset):
 
         return rois_coord
 
+#-----------------------------------------------------------------------
 
 class PrimAuxAttention(nn.Module):
     #TODO augment feature mutually

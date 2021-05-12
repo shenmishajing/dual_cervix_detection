@@ -284,14 +284,14 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
     def init_proposalOffset(self, offset_cfg):
         if offset_cfg is not None:
-            self.proposalOffset = build_proposaloffset(**offset_cfg)
+            self.proposalOffset = build_proposaloffset(offset_cfg)
         else:
             self.proposalOffset = None
 
 
     def init_FPNFeatureFuser(self, fpn_fuser_cfg):
         if fpn_fuser_cfg is not None:
-            self.fpn_fuser = build_fpnfeaturefuser(**fpn_fuser_cfg)
+            self.fpn_fuser = build_fpnfeaturefuser(fpn_fuser_cfg)
         else:
             self.fpn_fuser = None
 
@@ -464,7 +464,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                             prim_gt_labels, aux_gt_labels):
         prim_rois = bbox2roi([res.bboxes for res in prim_sampling_results])
         aux_rois = bbox2roi([res.bboxes for res in aux_sampling_results])
-        
+        print("prim_rois", prim_rois)
+        exit(-1)
         bbox_results = self._bbox_forward(prim_feats, aux_feats, prim_rois, aux_rois)
         prim_targets = self.prim_bbox_head.get_targets(prim_sampling_results, prim_gt_bboxes, prim_gt_labels, self.train_cfg)
         aux_targets = self.aux_bbox_head.get_targets(aux_sampling_results, aux_gt_bboxes, aux_gt_labels, self.train_cfg)

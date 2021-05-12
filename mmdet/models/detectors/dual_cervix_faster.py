@@ -261,6 +261,10 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
             gt_labels=None,
             gt_bboxes_ignore=prim_gt_bboxes_ignore,
             proposal_cfg=proposal_cfg)
+        
+        # print("prim_proposal_list", len(prim_proposal_list), [x[:2] for x in prim_proposal_list])
+        # output: prim_proposal_list 2 [torch.Size([1000, 5]), torch.Size([1000, 5])]
+        # 5: [x,y,x,y, conf_score]
         # print("prim_rpn_losses", prim_rpn_losses)
         losses.update({"prim_" + k: v  for k,v in prim_rpn_losses.items()})
 

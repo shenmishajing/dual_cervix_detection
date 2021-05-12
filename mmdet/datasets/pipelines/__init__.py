@@ -8,11 +8,13 @@ from .formating import (Collect, DefaultFormatBundle, ImageToTensor,
 from .instaboost import InstaBoost
 from .loading import (LoadAnnotations, LoadImageFromFile, LoadImageFromWebcam,
                       LoadMultiChannelImageFromFiles, LoadProposals,
+                      LoadMosaicImageAndAnnotations,
                       LoadDualCervixImageFromFile, LoadDualCervixAnnotations)
 from .test_time_aug import MultiScaleFlipAug
 from .transforms import (Albu, CutOut, Expand, MinIoURandomCrop, Normalize,
                          Pad, PhotoMetricDistortion, RandomCenterCropPad,
                          RandomCrop, RandomFlip, Resize, SegRescale,
+                         MixUp,
                          DualCervixNormalize)
 
 __all__ = [
@@ -25,6 +27,7 @@ __all__ = [
     'InstaBoost', 'RandomCenterCropPad', 'AutoAugment', 'CutOut', 'Shear',
     'Rotate', 'ColorTransform', 'EqualizeTransform', 'BrightnessTransform',
     'ContrastTransform', 'Translate',
+    'MixUp', 'LoadMosaicImageAndAnnotations',
     'LoadDualCervixImageFromFile', 'LoadDualCervixAnnotations', 'DualCervixNormalize',
     'DualCervixDefaultFormatBundle'
 ]
