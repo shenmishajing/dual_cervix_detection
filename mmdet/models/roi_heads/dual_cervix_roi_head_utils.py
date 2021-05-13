@@ -81,8 +81,8 @@ class ProposalOffsetXY(ProposalOffset):
         rois_wh = rois_coord[:, 2:4] - rois_coord[:, 0:2]
 
         rois_coord = torch.cat([
-            rois_coord[:, 0:2] + gamma * offset * rois_wh,
-            rois_coord[:, 2:4] + gamma * offset * rois_wh,
+            rois_coord[:, 0:2] + self.gamma * offset * rois_wh,
+            rois_coord[:, 2:4] + self.gamma * offset * rois_wh,
         ], dim=-1)
 
         return rois_coord
@@ -133,7 +133,7 @@ class ProposalOffsetXYXY(ProposalOffset):
     def apply_offset(self, rois_coord, offset):
         rois_wh = rois_coord[:, 2:4] - rois_coord[:, 0:2]
         rois_wh = torch.cat([rois_wh, rois_wh], dim=-1)
-        rois_coord = rois_coord + gamma * offset * rois_wh
+        rois_coord = rois_coord + self.gamma * offset * rois_wh
 
         return rois_coord
 
@@ -183,7 +183,7 @@ class ProposalOffsetXYWH(ProposalOffset):
     def apply_offset(self, rois_coord, offset):
         offset_xy = offset[:, 0:2]
         offset_wh = offset[:, 2:4]
-        rois_xy = rois_coord[:, 0:2] + gamma * offset_xy * rois_wh
+        rois_xy = rois_coord[:, 0:2] + self.gamma * offset_xy * rois_wh
         rois_wh = rois_wh * torch.exp(offset_wh)
         rois_coord = torch.cat([rois_xy, rois_xy + rois_wh], dim=-1)
 
