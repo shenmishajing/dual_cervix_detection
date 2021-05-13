@@ -160,20 +160,21 @@ class FasterPrimAuxDetector(TwoStageDetector):
                 proposal_list, img_metas, proposals, rescale=rescale)
 
 
-
 @DETECTORS.register_module()
 class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
 
     def __init__(self,  
                  prim_backbone, aux_backbone,
                  prim_neck, aux_neck,
-                 prim_rpn_head, aux_rpn_head,
-                 roi_head,
+                 prim_rpn_head=None, aux_rpn_head=None,
+                 roi_head=None,
                  aug_acid=True,
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None):
         super(TwoStageDetector, self).__init__()
+        assert roi_head
+        
         self.dual_det = True
         self.prim_backbone = build_backbone(prim_backbone)
         self.aux_backbone = build_backbone(aux_backbone)
@@ -187,9 +188,12 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
         prim_rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
         self.prim_rpn_head = build_head(prim_rpn_head_)
         
-        aux_rpn_head_ = aux_rpn_head.copy()
-        aux_rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
-        self.aux_rpn_head = build_head(aux_rpn_head_)
+        if aux_rpn_head:
+            aux_rpn_head_ = aux_rpn_head.copy()
+            aux_rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            self.aux_rpn_head = build_head(aux_rpn_head_)
+        else:
+            self.aux_rpn_head = None
 
         rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None 
         roi_head.update(train_cfg=rcnn_train_cfg)
@@ -210,7 +214,9 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
 
         self.aux_backbone.init_weights(pretrained)        
         self.aux_neck.init_weights()
-        self.aux_rpn_head.init_weights()
+
+        if self.aux_rpn_head:
+            self.aux_rpn_head.init_weights()
 
         self.roi_head.init_weights()
 
@@ -268,15 +274,18 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
         # print("prim_rpn_losses", prim_rpn_losses)
         losses.update({"prim_" + k: v  for k,v in prim_rpn_losses.items()})
 
-        aux_rpn_losses, aux_proposal_list = self.aux_rpn_head.forward_train(
-            aux_feats, 
-            img_metas, 
-            aux_gt_bboxes,
-            gt_labels=None,
-            gt_bboxes_ignore=aux_gt_bboxes_ignore,
-            proposal_cfg=proposal_cfg)
-        # print("aux_rpn_losses", aux_rpn_losses)
-        losses.update({"aux_" + k : v for k, v in aux_rpn_losses.items()})
+        if self.aux_rpn_head:
+            aux_rpn_losses, aux_proposal_list = self.aux_rpn_head.forward_train(
+                aux_feats, 
+                img_metas, 
+                aux_gt_bboxes,
+                gt_labels=None,
+                gt_bboxes_ignore=aux_gt_bboxes_ignore,
+                proposal_cfg=proposal_cfg)
+            # print("aux_rpn_losses", aux_rpn_losses)
+            losses.update({"aux_" + k : v for k, v in aux_rpn_losses.items()})
+        else:
+            aux_proposal_list = None
 
         roi_losses = self.roi_head.forward_train(prim_feats, aux_feats,
                                                  img_metas, 
@@ -327,7 +336,10 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
         prim_feats, aux_feats = self.extract_feat(prim_img, aux_img)
         if prim_proposals is None:
             prim_proposal_list = self.prim_rpn_head.simple_test_rpn(prim_feats, img_metas)
-            aux_proposal_list = self.aux_rpn_head.simple_test_rpn(aux_feats, img_metas)
+            if self.aux_rpn_head:
+                aux_proposal_list = self.aux_rpn_head.simple_test_rpn(aux_feats, img_metas)
+            else:
+                aux_proposal_list = None
         else:
             prim_proposal_list = prim_proposals
             aux_proposal_list = aux_proposals

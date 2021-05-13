@@ -1,7 +1,8 @@
+from mmcv.runner.fp16_utils import force_fp32
 import torch
 import torch.nn as nn
-from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
-from ..builder import HEADS, build_head, build_roi_extractor
+from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler, roi2bbox
+from ..builder import HEADS, build_head, build_roi_extractor, build_loss
 from .base_roi_head import BaseRoIHead
 from .test_mixins import BBoxTestMixin
 from mmcv.cnn import normal_init
@@ -499,6 +500,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         prim_rois = bbox2roi(prim_proposals)
         aux_rois = bbox2roi(aux_proposals)
         bbox_results = self._bbox_forward(prim_feats, aux_feats, prim_rois, aux_rois)
+        
         img_shapes = tuple(meta['img_shape'] for meta in img_metas)
         scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
 
@@ -619,3 +621,315 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
         np.savez(prim_proposal_path, prim_proposal_coord.cpu().numpy())
 
         self.proposal_idx += 1
+
+
+@HEADS.register_module()
+class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
+
+    def __init__(self, 
+                 prim_bbox_roi_extractor, aux_bbox_roi_extractor, 
+                 prim_bbox_head, aux_bbox_head, 
+                 bridge_bbox_roi_extractor, 
+                 attention_cfg, 
+                 offset_cfg, 
+                 fpn_fuser_cfg,
+                 aux_loss_cfg, 
+                 train_cfg, test_cfg):
+
+        self.offset_type = offset_cfg.get("type")
+        super().__init__(prim_bbox_roi_extractor, 
+                         aux_bbox_roi_extractor, 
+                         prim_bbox_head, 
+                         aux_bbox_head, 
+                         bridge_bbox_roi_extractor=bridge_bbox_roi_extractor, 
+                         attention_cfg=attention_cfg, 
+                         offset_cfg=offset_cfg, 
+                         fpn_fuser_cfg=fpn_fuser_cfg, 
+                         train_cfg=train_cfg, test_cfg=test_cfg)
+
+        self.aux_loss = build_loss(aux_loss_cfg)
+        
+
+    def forward_train(self,
+                      prim_feats, aux_feats,
+                      img_metas,
+                      prim_proposal_list, aux_proposal_list,
+                      prim_gt_bboxes, prim_gt_labels, prim_gt_bboxes_ignore,
+                      aux_gt_bboxes, aux_gt_labels, aux_gt_bboxes_ignore):
+
+        assert aux_proposal_list == None
+
+        #! attention
+        if self.attention:
+            prim_feats = self.attention(prim_feats, aux_feats)
+
+        num_imgs = len(img_metas)
+    
+        # prim部分
+        if prim_gt_bboxes_ignore is None:
+            prim_gt_bboxes_ignore = [None for _ in range(num_imgs)]
+
+        prim_sampling_results = []
+        for i in range(num_imgs):
+            prim_assign_result = self.bbox_assigner.assign(
+                prim_proposal_list[i], prim_gt_bboxes[i], prim_gt_bboxes_ignore[i], prim_gt_labels[i])
+            prim_sampling_result = self.bbox_sampler.sample(
+                prim_assign_result,
+                prim_proposal_list[i],
+                prim_gt_bboxes[i],
+                prim_gt_labels[i],
+                feats=[lvl_feat[i][None] for lvl_feat in prim_feats])
+            prim_sampling_results.append(prim_sampling_result)
+
+        losses = dict()
+        bbox_results = self._bbox_forward_train(prim_feats, aux_feats, 
+                                                prim_sampling_results, None,
+                                                prim_gt_bboxes, aux_gt_bboxes,
+                                                prim_gt_labels, aux_gt_labels,
+                                                aux_gt_bboxes_ignore)
+        losses.update(bbox_results['prim_loss_bbox'])
+        losses.update(bbox_results['aux_loss_bbox'])
+        losses.update(bbox_results['aux_loss'])
+
+        return losses
+
+    
+    def _bbox_forward_train(self, 
+                            prim_feats, aux_feats,
+                            prim_sampling_results, aux_sampling_results, 
+                            prim_gt_bboxes, aux_gt_bboxes, 
+                            prim_gt_labels, aux_gt_labels, 
+                            aux_gt_bboxes_ignore):
+        prim_rois = bbox2roi([res.bboxes for res in prim_sampling_results])
+
+        bbox_results, aux_rois = self._bbox_forward(prim_feats, aux_feats, prim_rois)
+        prim_targets = self.prim_bbox_head.get_targets(prim_sampling_results, prim_gt_bboxes, prim_gt_labels, self.train_cfg)
+
+        #! aux_sampling_results
+        aux_proposal_list = roi2bbox(aux_rois)
+        aux_sampling_results = []
+        for i in range(aux_proposal_list):
+            aux_assign_result = self.bbox_assigner.assign(
+                aux_proposal_list[i], aux_gt_bboxes[i], aux_gt_bboxes_ignore[i], aux_gt_labels[i])
+            aux_sampling_result = self.bbox_sampler.sample(
+                aux_assign_result,
+                aux_proposal_list[i],
+                aux_gt_bboxes[i],
+                aux_gt_labels[i],
+                feats=[lvl_feat[i][None] for lvl_feat in aux_feats])
+            aux_sampling_results.append(aux_sampling_result)
+        aux_targets = self.aux_bbox_head.get_targets(aux_sampling_results, aux_gt_bboxes, aux_gt_labels, self.train_cfg)
+
+        aux_rois_box = aux_rois[:, 1:]
+        aux_loss = self._aux_loss(aux_rois_box, *aux_targets, self.prim_bbox_head.num_classes)
+
+        prim_loss_bbox = self.prim_bbox_head.loss(bbox_results['prim_cls_score'], 
+                                                  bbox_results['prim_bbox_pred'], 
+                                                  prim_rois, 
+                                                  *prim_targets)
+        aux_loss_bbox = self.aux_bbox_head.loss(bbox_results['aux_cls_score'],
+                                                bbox_results['aux_bbox_pred'],
+                                                aux_rois,
+                                                *aux_targets)
+        prim_loss_bbox = {"prim_" + k: v for k,v in prim_loss_bbox.items()}
+        aux_loss_bbox = {"aux_" + k: v for k,v in aux_loss_bbox.items()}
+        bbox_results.update(prim_loss_bbox=prim_loss_bbox)
+        bbox_results.update(aux_loss_bbox=aux_loss_bbox)
+        bbox_results.update(aux_loss=aux_loss)
+
+        return bbox_results
+
+
+    @force_fp32(apply_to=('bbox_pred', ))
+    def _aux_loss(self, 
+                  bbox_pred,
+                  labels,
+                  labels_weights, 
+                  bbox_targets, 
+                  bbox_weights, 
+                  num_classes,
+                  reduction_override=None):
+        losses = dict()
+        bg_class_ind = num_classes
+        pos_inds = (labels >= 0) & (labels < bg_class_ind)
+
+        if pos_inds.any():
+            pos_bbox_pred = bbox_pred.view(
+                        bbox_pred.size(0), -1, 4)[pos_inds.type(torch.bool), labels[pos_inds.type(torch.bool)]]
+
+        losses['loss_bbox'] = self.aux_loss(
+            pos_bbox_pred,
+            bbox_targets[pos_inds.type(torch.bool)],
+            bbox_weights[pos_inds.type(torch.bool)],
+            avg_factor=bbox_targets.size(0),
+            reduction_override=reduction_override)
+
+        return losses
+
+
+    def _bbox_forward(self, prim_feats, aux_feats, prim_rois):
+        prim_bbox_feats = self.prim_bbox_roi_extractor(
+            prim_feats[:self.prim_bbox_roi_extractor.num_inputs], prim_rois)
+        
+        if self.fpn_fuser:
+            prim_bbox_feats_ = self.fpn_fuser(prim_bbox_feats, prim_feats[:self.prim_bbox_roi_extractor.num_inputs], 
+                                            aux_feats[:self.aux_bbox_roi_extractor.num_inputs], prim_rois)
+            offset = self.proposalOffset(prim_bbox_feats_)
+        else:
+            offset = self.proposalOffset(prim_bbox_feats)
+        
+        bridge_bbox_feats, aux_rois = self._extract_bridge_bbox_feats(prim_bbox_feats, aux_feats, prim_rois, offset)
+
+        aux_bbox_feats = self.aux_bbox_roi_extractor(
+            aux_feats[:self.aux_bbox_roi_extractor.num_inputs], aux_rois)
+        aux_cls_score, aux_bbox_pred = self.aux_bbox_head(aux_bbox_feats)
+
+        prim_bbox_feats = torch.cat([prim_bbox_feats, bridge_bbox_feats], dim=1)        
+        prim_cls_score, prim_bbox_pred = self.prim_bbox_head(prim_bbox_feats)
+
+        bbox_results = dict(
+            prim_cls_score=prim_cls_score, prim_bbox_pred=prim_bbox_pred, prim_bbox_feats=prim_bbox_feats,
+            aux_cls_score=aux_cls_score, aux_bbox_pred=aux_bbox_pred, aux_bbox_feats=aux_bbox_feats)
+        
+        return bbox_results, aux_rois
+
+
+    def _extract_bridge_bbox_feats(self, prim_bbox_feats, aux_feats, prim_rois, offset):
+        if self.bridge_bbox_roi_extractor_type == "SingleDeformRoIExtractor":
+            assert self.offset_type == "ProposalOffsetXY"
+            aux_rois_coord = self.proposalOffset.apply_offset(prim_rois[:, 1:], offset)
+            aux_rois = torch.cat([prim_rois[:, 0:1], aux_rois_coord], dim=-1)
+
+            n = prim_rois.shape[0]
+            out_size = prim_bbox_feats.shape[-1]
+            offset = offset.view(n, 2, 1, 1).repeat(1, 1, out_size, out_size)
+            bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], prim_rois, offset)
+
+        elif self.bridge_bbox_roi_extractor_type == "SingleRoIExtractor":
+            aux_rois_coord = self.proposalOffset.apply_offset(prim_rois[:, 1:], offset)
+            aux_rois = torch.cat([prim_rois[:, 0:1], aux_rois_coord], dim=-1)
+            bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], aux_rois)
+
+        else:
+            raise "roi_extractor_type = {} is not support".format(self.bridge_bbox_roi_extractor_type)
+        
+        return bridge_bbox_feats, aux_rois
+
+
+    def simple_test_bboxes(self, 
+                           prim_feats, aux_feats,
+                           img_metas, 
+                           prim_proposals, aux_proposals, 
+                           rcnn_test_cfg, 
+                           rescale=False):
+        # 没有辅助模态没有 rpn
+        assert aux_proposals == None
+       
+        #! attention
+        if self.attention:
+            prim_feats = self.attention(prim_feats, aux_feats)
+        
+        prim_rois = bbox2roi(prim_proposals)
+        bbox_results, aux_rois = self._bbox_forward(prim_feats, aux_feats, prim_rois)
+
+
+        # 预测结果的处理
+        img_shapes = tuple(meta['img_shape'] for meta in img_metas)
+        scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
+
+        # aux
+        aux_cls_score = bbox_results['aux_cls_score']
+        aux_bbox_pred = bbox_results['aux_bbox_pred']
+        aux_num_proposals_per_img = tuple(len(p) for p in aux_proposals)
+        aux_rois = aux_rois.split(aux_num_proposals_per_img, 0)
+        aux_cls_score = aux_cls_score.split(aux_num_proposals_per_img, 0)
+
+        # some detector with_reg is False, bbox_pred will be None
+        if aux_bbox_pred is not None:
+            # the bbox prediction of some detectors like SABL is not Tensor
+            if isinstance(aux_bbox_pred, torch.Tensor):
+                aux_bbox_pred = aux_bbox_pred.split(aux_num_proposals_per_img, 0)
+            else:
+                aux_bbox_pred = self.aux_bbox_head.bbox_pred_split(
+                    aux_bbox_pred, aux_num_proposals_per_img)
+        else:
+            aux_bbox_pred = (None, ) * len(aux_proposals)
+
+        # apply bbox post-processing to each image individually
+        aux_det_bboxes = []
+        aux_det_labels = []
+        for i in range(len(aux_proposals)):
+            aux_det_bbox, aux_det_label = self.aux_bbox_head.get_bboxes(
+                aux_rois[i],
+                aux_cls_score[i],
+                aux_bbox_pred[i],
+                img_shapes[i],
+                scale_factors[i],
+                rescale=rescale,
+                cfg=rcnn_test_cfg)
+            aux_det_bboxes.append(aux_det_bbox)
+            aux_det_labels.append(aux_det_label)        
+
+        # prim
+        prim_cls_score = bbox_results['prim_cls_score']
+        prim_bbox_pred = bbox_results['prim_bbox_pred']
+        prim_num_proposals_per_img = tuple(len(p) for p in prim_proposals)
+        prim_rois = prim_rois.split(prim_num_proposals_per_img, 0)
+        prim_cls_score = prim_cls_score.split(prim_num_proposals_per_img, 0)
+
+        # some detector with_reg is False, bbox_pred will be None
+        if prim_bbox_pred is not None:
+            # the bbox prediction of some detectors like SABL is not Tensor
+            if isinstance(prim_bbox_pred, torch.Tensor):
+                prim_bbox_pred = prim_bbox_pred.split(prim_num_proposals_per_img, 0)
+            else:
+                prim_bbox_pred = self.prim_bbox_head.bbox_pred_split(
+                    prim_bbox_pred, prim_num_proposals_per_img)
+        else:
+            prim_bbox_pred = (None, ) * len(prim_proposals)
+
+        # apply bbox post-processing to each image individually
+        prim_det_bboxes = []
+        prim_det_labels = []
+        for i in range(len(prim_proposals)):
+            prim_det_bbox, prim_det_label = self.prim_bbox_head.get_bboxes(
+                prim_rois[i],
+                prim_cls_score[i],
+                prim_bbox_pred[i],
+                img_shapes[i],
+                scale_factors[i],
+                rescale=rescale,
+                cfg=rcnn_test_cfg)
+            prim_det_bboxes.append(prim_det_bbox)
+            prim_det_labels.append(prim_det_label)
+
+        return prim_det_bboxes, prim_det_labels, aux_det_bboxes, aux_det_labels
+
+
+    def simple_test(self, 
+                    prim_feats, aux_feats, 
+                    prim_proposal_list, aux_proposal_list, 
+                    img_metas, 
+                    prim_proposals=None, aux_proposals=None, 
+                    rescale=False):
+        assert aux_proposal_list == None
+
+        (prim_det_bboxes, prim_det_labels, 
+        aux_det_bboxes, aux_det_labels) = self.simple_test_bboxes(prim_feats, aux_feats, 
+                                                                  img_metas, 
+                                                                  prim_proposal_list, aux_proposal_list,
+                                                                  self.test_cfg,
+                                                                  rescale=rescale)
+        prim_results = [
+            bbox2result(prim_det_bboxes[i], prim_det_labels[i], 
+                        self.prim_bbox_head.num_classes)
+            for i in range(len(prim_det_bboxes))
+        ]
+
+        aux_results = [
+            bbox2result(aux_det_bboxes[i], aux_det_labels[i], 
+                        self.aux_bbox_head.num_classes)
+            for i in range(len(aux_det_bboxes))
+        ]
+        #! list中是每张图像的检测框
+        return prim_results, aux_results
