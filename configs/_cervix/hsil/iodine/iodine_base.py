@@ -47,21 +47,22 @@ data = dict(
         type=dataset_type,
         img_type=img_type,
         classes=classes,
-        ann_file=data_root + 'hsil_annos/train_{}.json'.format(img_type),
+        ann_file=data_root + 'hsil_reannos/train_{}.json'.format(img_type),
         img_prefix=data_root + 'img/',
         pipeline=train_pipeline),
     val=dict(
         type=dataset_type,
         img_type=img_type,
         classes=classes,
-        ann_file=data_root + 'hsil_annos/valid_{}.json'.format(img_type),
+        ann_file=data_root + 'hsil_reannos/val_{}.json'.format(img_type),
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         img_type=img_type,
         classes=classes,
-        ann_file=data_root + 'hsil_annos/test_{}.json'.format(img_type),
+        ann_file=data_root + 'hsil_reannos/test_{}.json'.format(img_type),
         img_prefix=data_root + 'img/',
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
