@@ -183,6 +183,7 @@ class ProposalOffsetXYWH(ProposalOffset):
     def apply_offset(self, rois_coord, offset):
         offset_xy = offset[:, 0:2]
         offset_wh = offset[:, 2:4]
+        rois_wh = rois_coord[:, 2:4] - rois_coord[:, 0:2]
         rois_xy = rois_coord[:, 0:2] + self.gamma * offset_xy * rois_wh
         rois_wh = rois_wh * torch.exp(offset_wh)
         rois_coord = torch.cat([rois_xy, rois_xy + rois_wh], dim=-1)
