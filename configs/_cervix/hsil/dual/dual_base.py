@@ -67,4 +67,4 @@ data = dict(
         pipeline=test_pipeline))
 evaluation = dict(interval=1, metric='bbox')
 #!
-optimizer = dict(lr=0.001)
+optimizer = dict(lr=0.0025)
