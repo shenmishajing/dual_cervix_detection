@@ -514,10 +514,16 @@ class DualCervixDataset(CervixDataset):
             else:
                 gt_bboxes.append(bbox)
                 gt_labels.append(self.cat2label[ann['category_id']])
-
+                
+        box_idx = None
         if gt_bboxes:
             gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
             gt_labels = np.array(gt_labels, dtype=np.int64)
+            
+            #! 确保醋酸和碘的框的排列顺序是一致的（标注时，已经确定了对应关系，只要按左上角顶点的x坐标值进行排序，即可对应）
+            box_idx = np.argsort(gt_bboxes[:, 0])
+            gt_bboxes = gt_bboxes[box_idx]
+            gt_labels = gt_labels[box_idx]
         else:
             gt_bboxes = np.zeros((0, 4), dtype=np.float32)
             gt_labels = np.array([], dtype=np.int64)
