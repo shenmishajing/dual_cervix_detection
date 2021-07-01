@@ -165,10 +165,10 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
     """
     #! 双模态，双检测，
     #! 适用于的配置文件夹有 
-        configs/_cervix/hsil/dual/att_offset
-        configs/_cervix/hsil/dual/dualfpnfuse
-        configs/_cervix/hsil/dual/fpnalignfuse
-        configs/_cervix/hsil/dual/fpnfuse
+        configs/dual_cervix/hsil/dual/att_offset
+        configs/dual_cervix/hsil/dual/dualfpnfuse
+        configs/dual_cervix/hsil/dual/fpnalignfuse
+        configs/dual_cervix/hsil/dual/fpnfuse
     """
     def __init__(self,  
                  prim_backbone, aux_backbone,
@@ -360,7 +360,7 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
 @DETECTORS.register_module()
 class FasterPrimAuxAuxOffsetLossDualDetector(FasterPrimAuxDetector):
     #! 最后尝试的idea，由于idea和上面的框架不相容，重新写了这个类，改了几个不兼容的部分
-    #! 配置文件是 configs/_cervix/hsil/dual/auxoffsetloss
+    #! 配置文件是 configs/dual_cervix/hsil/dual/auxoffsetloss
     def __init__(self, 
                  prim_backbone, aux_backbone, 
                  prim_neck, aux_neck, 

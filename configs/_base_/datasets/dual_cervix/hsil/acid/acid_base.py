@@ -1,14 +1,3 @@
-_base_ = [
-    '../../../_base_/schedules/schedule_2x.py',
-    '../../../_base_/default_runtime.py',
-]
-
-log_config = dict(
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
-    ])
-
 dataset_type = 'SingleCervixDataset'
 data_root = 'data/cervix/'
 classes = ("hsil", )

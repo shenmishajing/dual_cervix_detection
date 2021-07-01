@@ -245,10 +245,10 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
     """
     #! 双模态，双检测结果
     #! 适用于的配置文件夹有 
-        configs/_cervix/hsil/dual/att_offset
-        configs/_cervix/hsil/dual/dualfpnfuse
-        configs/_cervix/hsil/dual/fpnalignfuse
-        configs/_cervix/hsil/dual/fpnfuse
+        configs/dual_cervix/hsil/dual/att_offset
+        configs/dual_cervix/hsil/dual/dualfpnfuse
+        configs/dual_cervix/hsil/dual/fpnalignfuse
+        configs/dual_cervix/hsil/dual/fpnfuse
     """  
 
     def __init__(self, 
@@ -645,7 +645,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 @HEADS.register_module()
 class DualCervixDualDetPrimAuxAuxOffsetLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
-    #! 最后尝试的idea：configs/_cervix/hsil/dual/auxoffsetloss/dual_faster_rcnn_r50_fpn_droi_auxoffsetloss_2x_acid_hsil.py
+    #! 最后尝试的idea：configs/dual_cervix/hsil/dual/auxoffsetloss/dual_faster_rcnn_r50_fpn_droi_auxoffsetloss_2x_acid_hsil.py
 
     def __init__(self, 
                  prim_bbox_roi_extractor, aux_bbox_roi_extractor, 
