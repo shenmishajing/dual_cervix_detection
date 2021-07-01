@@ -6,7 +6,7 @@ log_config = dict(
         dict(type = 'TextLoggerHook'),
         dict(type = 'WandbLoggerHook',
              with_step = False,
-             init_kwargs = dict(project = 'your-project-name',
+             init_kwargs = dict(project = 'dual_cervix_detection',
                                 name = 'default-project-name',
                                 tags = ['mmdetection']))])
 # yapf:enable
