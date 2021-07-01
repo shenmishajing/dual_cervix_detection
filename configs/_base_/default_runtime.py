@@ -6,6 +6,8 @@ log_config = dict(
         dict(type='TextLoggerHook')
     ])
 # yapf:enable
+custom_hooks = [dict(type='NumClassCheckHook')]
+
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
 load_from = None
