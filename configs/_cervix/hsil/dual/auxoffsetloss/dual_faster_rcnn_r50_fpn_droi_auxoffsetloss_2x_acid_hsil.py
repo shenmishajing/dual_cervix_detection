@@ -68,7 +68,7 @@ model = dict(
             shared=False),
 
         offset_cfg=dict(
-            type="ProposalOffsetXY",
+            type="ProposalOffsetXYWH",
             in_channels=256, 
             out_channels=256, 
             roi_feat_area=7*7), #! squared roi_feat_size(in bbox_head)
@@ -90,13 +90,19 @@ model = dict(
             out_channels=256,
             featmap_strides=[4, 8, 16, 32]),
 
+        # bridge_bbox_roi_extractor=dict(
+        #     type='SingleDeformRoIExtractor',
+        #     #! spatial_scale 会根据featmap_strides自动添加的，gamma不知道啥意思
+        #     roi_layer=dict(type='DeformRoIPool', output_size=7, sampling_ratio=0, gamma=0.1),
+        #     out_channels=256,
+        #     featmap_strides=[4, 8, 16, 32],
+        #     finest_scale=56),
+
         bridge_bbox_roi_extractor=dict(
-            type='SingleDeformRoIExtractor',
-            #! spatial_scale 会根据featmap_strides自动添加的，gamma不知道啥意思
-            roi_layer=dict(type='DeformRoIPool', output_size=7, sampling_ratio=0, gamma=0.1),
+            type='SingleRoIExtractor',
+            roi_layer=dict(type='RoIAlign', output_size=7),
             out_channels=256,
-            featmap_strides=[4, 8, 16, 32],
-            finest_scale=56),
+            featmap_strides=[4, 8, 16, 32]),
 
         prim_bbox_head=dict(
             type='Shared2FCBBoxHead',
@@ -178,19 +184,8 @@ train_cfg = dict(
         debug=False),
 
     aux_rcnn=dict(
-        assigner=dict(
-            type='MaxIoUAssigner',
-            pos_iou_thr=0.0,
-            neg_iou_thr=0.0,
-            min_pos_iou=0.0,
-            match_low_quality=True,
-            ignore_iof_thr=-1),
-        sampler=dict(
-            type='RandomSampler',
-            num=512,
-            pos_fraction=1.0,
-            neg_pos_ub=-1,
-            add_gt_as_proposals=True),
+        assigner=None,
+        sampler=None,
         pos_weight=-1,
         debug=False)
 )
@@ -211,23 +206,3 @@ test_cfg = dict(
     # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
 )
 total_epochs = 40
-
-data_root = "data/cervix/"
-data = dict(
-    samples_per_gpu=2,
-    workers_per_gpu=2,
-    train=dict(
-        acid_ann_file=data_root + 'hsil_annos/train_acid.json',
-        iodine_ann_file=data_root + 'hsil_annos/train_acid.json',
-        img_prefix=data_root + 'img/'),
-    val=dict(
-        acid_ann_file=data_root + 'hsil_annos/valid_acid.json',
-        iodine_ann_file=data_root + 'hsil_annos/valid_acid.json',
-        img_prefix=data_root + 'img/',
-        ),
-    test=dict(
-        acid_ann_file=data_root + 'hsil_annos/test_acid.json',
-        iodine_ann_file=data_root + 'hsil_annos/test_iodine.json',
-        img_prefix=data_root + 'img/',
-       )
-)

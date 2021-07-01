@@ -26,7 +26,7 @@ from .vfnet import VFNet
 from .yolact import YOLACT
 from .yolo import YOLOV3
 from .sparse_reppoints_detector import SparseRepPointsDetector
-from .dual_cervix_faster import FasterPrimAuxDetector
+from .dual_cervix_faster import FasterPrimAuxDetector, FasterPrimAuxAuxOffsetLossDualDetector
 
 
 __all__ = [
@@ -35,5 +35,5 @@ __all__ = [
     'RetinaNet', 'FCOS', 'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector',
     'FOVEA', 'FSAF', 'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA',
     'YOLOV3', 'YOLACT', 'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRepPointsDetector',
-    'FasterPrimAuxDetector'
+    'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector'
 ]

@@ -8,7 +8,7 @@ log_config = dict(
         dict(type='TextLoggerHook'),
         dict(type='TensorboardLoggerHook')
     ])
-
+#! 针对宫颈专门写的数据模块
 dataset_type = 'DualCervixDataset'
 data_root = 'data/cervix/'
 classes = ("hsil", )
@@ -17,14 +17,14 @@ img_norm_cfg = dict(
     iodine_mean=[134.4105, 89.1735, 63.24], iodine_std=[60.945, 60.3585, 55.9215],
     to_rgb=True)
 train_pipeline = [
-    dict(type='LoadDualCervixImageFromFile'),
-    dict(type='LoadDualCervixAnnotations', with_bbox=True),
+    dict(type='LoadDualCervixImageFromFile'), #! 同时加载醋酸和碘图像
+    dict(type='LoadDualCervixAnnotations', with_bbox=True), #! 同时加载醋酸的框和碘的框
     dict(type='Resize', img_scale=(1333, 800), keep_ratio=True),
     dict(type='RandomFlip', flip_ratio=0.5),
-    dict(type='DualCervixNormalize', **img_norm_cfg),
+    dict(type='DualCervixNormalize', **img_norm_cfg), #! 分别标准化，根据各自的均值和标准差
     dict(type='Pad', size_divisor=32),
-    dict(type='DualCervixDefaultFormatBundle'),
-    dict(type='Collect', keys=['acid_img', 'iodine_img', 'acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']),
+    dict(type='DualCervixDefaultFormatBundle'), #! 格式标准化
+    dict(type='Collect', keys=['acid_img', 'iodine_img', 'acid_gt_bboxes', 'iodine_gt_bboxes', 'acid_gt_labels', 'iodine_gt_labels']), #! 将需要的东西传到检测模型中
 ]
 test_pipeline = [
     dict(type='LoadDualCervixImageFromFile'),
@@ -44,7 +44,7 @@ test_pipeline = [
 data = dict(
     samples_per_gpu=2,
     workers_per_gpu=2,
-    train=dict(
+    train=dict(#! 具体查看dataset部分的cervix.py
         type=dataset_type,
         classes=classes,
         acid_ann_file=data_root + 'hsil_reannos/train_acid.json',

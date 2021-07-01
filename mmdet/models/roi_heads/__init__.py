@@ -15,7 +15,7 @@ from .roi_extractors import SingleRoIExtractor
 from .shared_heads import ResLayer
 from .standard_roi_head import StandardRoIHead
 from .trident_roi_head import TridentRoIHead
-from .dual_cervix_roi_head import DualCervixPrimAuxRoiHead, DualCervixDualDetPrimAuxRoiHead
+from .dual_cervix_roi_head import DualCervixPrimAuxRoiHead, DualCervixDualDetPrimAuxRoiHead, DualCervixDualDetPrimAuxAuxOffsetLossRoiHead
 
 
 __all__ = [
@@ -26,5 +26,5 @@ __all__ = [
     'HTCMaskHead', 'FusedSemanticHead', 'GridHead', 'MaskIoUHead',
     'SingleRoIExtractor', 'PISARoIHead', 'PointRendRoIHead', 'MaskPointHead',
     'CoarseMaskHead', 'DynamicRoIHead', 'TridentRoIHead',
-    'DualCervixPrimAuxRoiHead', 'DualCervixDualDetPrimAuxRoiHead'
+    'DualCervixPrimAuxRoiHead', 'DualCervixDualDetPrimAuxRoiHead', 'DualCervixDualDetPrimAuxAuxOffsetLossRoiHead'
 ]

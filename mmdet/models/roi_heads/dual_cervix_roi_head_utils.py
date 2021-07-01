@@ -5,6 +5,7 @@ from mmcv.cnn import normal_init
 
 
 def build_proposaloffset(offset_cfg):
+    #! 三种不同的offset预测方式
     support_offset_type = ("ProposalOffsetXY", "ProposalOffsetXYXY", "ProposalOffsetXYWH")
     offset_type = offset_cfg.pop("type")
 
@@ -17,7 +18,7 @@ def build_proposaloffset(offset_cfg):
 
 
 class ProposalOffset(nn.Module, metaclass=ABCMeta):
-
+    #! offset的基类 
 
     def __init__(self, in_channels, out_channels, roi_feat_area, gamma=0.1):
         super(ProposalOffset, self).__init__()
@@ -51,7 +52,7 @@ class ProposalOffset(nn.Module, metaclass=ABCMeta):
 
 
 class ProposalOffsetXY(ProposalOffset):
-
+    #! 主模态proposal加上偏移(x, y)，得到辅助模态的proposal
 
     def init_layers(self):
         self.offset = nn.ModuleList([
@@ -89,7 +90,7 @@ class ProposalOffsetXY(ProposalOffset):
 
 
 class ProposalOffsetXYXY(ProposalOffset):
-
+    #! 主模态proposal加上偏移(x1, y1, x2, y2)，得到辅助模态的proposal
 
     def init_layers(self):
         self.offset1 = nn.ModuleList([
@@ -139,6 +140,7 @@ class ProposalOffsetXYXY(ProposalOffset):
 
 
 class ProposalOffsetXYWH(ProposalOffset):
+    #! 主模态proposal加上偏移(x, y, w, h)，得到辅助模态的proposal
 
 
     def init_layers(self):

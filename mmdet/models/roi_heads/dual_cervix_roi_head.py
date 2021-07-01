@@ -9,11 +9,12 @@ from mmcv.cnn import normal_init
 from .dual_cervix_roi_head_utils import build_proposaloffset, PrimAuxAttention, build_fpnfeaturefuser
 import os
 import numpy as np 
+import copy
 
 
 @HEADS.register_module()
 class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
-
+    #! 用于双模态，单检测结果，现在已经不用了，可以删掉
     def __init__(self, 
                  attention_cfg,
                  offset_cfg,
@@ -241,7 +242,14 @@ class DualCervixPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 @HEADS.register_module()
 class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
-
+    """
+    #! 双模态，双检测结果
+    #! 适用于的配置文件夹有 
+        configs/_cervix/hsil/dual/att_offset
+        configs/_cervix/hsil/dual/dualfpnfuse
+        configs/_cervix/hsil/dual/fpnalignfuse
+        configs/_cervix/hsil/dual/fpnfuse
+    """  
 
     def __init__(self, 
                 prim_bbox_roi_extractor,
@@ -254,6 +262,20 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                 fpn_fuser_cfg=None,
                 train_cfg=None, 
                 test_cfg=None):
+        """[summary]
+
+        Args:
+            prim_bbox_roi_extractor ([type]): 主模态使用roi_extractor
+            aux_bbox_roi_extractor ([type]): 辅助模态使用roi_extractor
+            prim_bbox_head ([type]): 就是原来faster-rcnn中的配置
+            aux_bbox_head ([type]): 就是原来faster-rcnn中的配置
+            bridge_bbox_roi_extractor ([type], optional): 由主模态得出的proposal，去辅助模态的特征上进行roi提取特征. Defaults to None.
+            attention_cfg ([type], optional): 通过attention的方式，用辅助模态特征来增强主模态特征. Defaults to None.
+            offset_cfg ([type], optional): offset形式. Defaults to None.
+            fpn_fuser_cfg ([type], optional): fpn的全局特征融合到主模态的proposal特征. Defaults to None.
+            train_cfg ([type], optional): [description]. Defaults to None.
+            test_cfg ([type], optional): [description]. Defaults to None.
+        """
         super(BaseRoIHead, self).__init__()
 
         if (offset_cfg is None and bridge_bbox_roi_extractor is not None) or (offset_cfg is not None and bridge_bbox_roi_extractor is None):
@@ -450,7 +472,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
             bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], prim_rois, offset)
 
         elif self.bridge_bbox_roi_extractor_type == "SingleRoIExtractor":
-            prim_rois = self.proposalOffset.apply_offset(prim_rois, offsets)
+            prim_rois = self.proposalOffset.apply_offset(prim_rois, offset)
             bridge_bbox_feats = self.bridge_bbox_roi_extractor(aux_feats[:self.bridge_bbox_roi_extractor.num_inputs], prim_rois)
 
         else:
@@ -465,8 +487,7 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
                             prim_gt_labels, aux_gt_labels):
         prim_rois = bbox2roi([res.bboxes for res in prim_sampling_results])
         aux_rois = bbox2roi([res.bboxes for res in aux_sampling_results])
-        print("prim_rois", prim_rois)
-        exit(-1)
+
         bbox_results = self._bbox_forward(prim_feats, aux_feats, prim_rois, aux_rois)
         prim_targets = self.prim_bbox_head.get_targets(prim_sampling_results, prim_gt_bboxes, prim_gt_labels, self.train_cfg)
         aux_targets = self.aux_bbox_head.get_targets(aux_sampling_results, aux_gt_bboxes, aux_gt_labels, self.train_cfg)
@@ -601,7 +622,6 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
     def proposals_vis(self, rois, offset):
-        print(rois.shape, offset.shape)
 
         gamma = 0.1
         offset_tmp = gamma * (rois[:, 3:5] - rois[:, 1:3]) * offset
@@ -624,7 +644,8 @@ class DualCervixDualDetPrimAuxRoiHead(BaseRoIHead, BBoxTestMixin):
 
 
 @HEADS.register_module()
-class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
+class DualCervixDualDetPrimAuxAuxOffsetLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
+    #! 最后尝试的idea：configs/_cervix/hsil/dual/auxoffsetloss/dual_faster_rcnn_r50_fpn_droi_auxoffsetloss_2x_acid_hsil.py
 
     def __init__(self, 
                  prim_bbox_roi_extractor, aux_bbox_roi_extractor, 
@@ -633,10 +654,15 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
                  attention_cfg, 
                  offset_cfg, 
                  fpn_fuser_cfg,
-                 aux_loss_cfg, 
-                 train_cfg, test_cfg):
+                 aux_offset_loss_cfg, 
+                 prim_train_cfg, aux_train_cfg, 
+                 test_cfg):
 
         self.offset_type = offset_cfg.get("type")
+        self.prim_train_cfg = prim_train_cfg
+        self.aux_train_cfg = aux_train_cfg
+        self.test_cfg = test_cfg
+
         super().__init__(prim_bbox_roi_extractor, 
                          aux_bbox_roi_extractor, 
                          prim_bbox_head, 
@@ -645,10 +671,27 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
                          attention_cfg=attention_cfg, 
                          offset_cfg=offset_cfg, 
                          fpn_fuser_cfg=fpn_fuser_cfg, 
-                         train_cfg=train_cfg, test_cfg=test_cfg)
+                         train_cfg=None, test_cfg=test_cfg)
 
-        self.aux_loss = build_loss(aux_loss_cfg)
+        self.aux_offset_loss = build_loss(aux_offset_loss_cfg)
         
+
+    def init_assigner_sampler(self):
+        """Initialize assigner and sampler."""
+        self.prim_bbox_assigner = None
+        self.prim_bbox_sampler = None
+        if self.prim_train_cfg:
+            self.prim_bbox_assigner = build_assigner(self.prim_train_cfg.assigner)
+            self.prim_bbox_sampler = build_sampler(
+                self.prim_train_cfg.sampler, context=self)
+
+        self.aux_bbox_assigner = None
+        self.aux_bbox_sampler = None
+        # if self.aux_train_cfg:
+        #     self.aux_bbox_assigner = build_assigner(self.aux_train_cfg.assigner)
+        #     self.aux_bbox_sampler = build_sampler(
+        #         self.aux_train_cfg.sampler, context=self)
+
 
     def forward_train(self,
                       prim_feats, aux_feats,
@@ -671,9 +714,9 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
 
         prim_sampling_results = []
         for i in range(num_imgs):
-            prim_assign_result = self.bbox_assigner.assign(
+            prim_assign_result = self.prim_bbox_assigner.assign(
                 prim_proposal_list[i], prim_gt_bboxes[i], prim_gt_bboxes_ignore[i], prim_gt_labels[i])
-            prim_sampling_result = self.bbox_sampler.sample(
+            prim_sampling_result = self.prim_bbox_sampler.sample(
                 prim_assign_result,
                 prim_proposal_list[i],
                 prim_gt_bboxes[i],
@@ -689,7 +732,7 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
                                                 aux_gt_bboxes_ignore)
         losses.update(bbox_results['prim_loss_bbox'])
         losses.update(bbox_results['aux_loss_bbox'])
-        losses.update(bbox_results['aux_loss'])
+        losses.update(bbox_results['aux_offset_loss'])
 
         return losses
 
@@ -700,28 +743,28 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
                             prim_gt_bboxes, aux_gt_bboxes, 
                             prim_gt_labels, aux_gt_labels, 
                             aux_gt_bboxes_ignore):
+        assert aux_sampling_results == None
         prim_rois = bbox2roi([res.bboxes for res in prim_sampling_results])
 
         bbox_results, aux_rois = self._bbox_forward(prim_feats, aux_feats, prim_rois)
-        prim_targets = self.prim_bbox_head.get_targets(prim_sampling_results, prim_gt_bboxes, prim_gt_labels, self.train_cfg)
+        prim_targets = self.prim_bbox_head.get_targets(prim_sampling_results, prim_gt_bboxes, prim_gt_labels, self.prim_train_cfg)
 
         #! aux_sampling_results
-        aux_proposal_list = roi2bbox(aux_rois)
+        #! 按输出的结果看，rois是按图像的顺序排列的，这里就可以将rois平均分，得到每个图像中的roi
+        num_imgs = len(prim_sampling_results)
+        aux_proposal_list = torch.split(aux_rois[:, 1:],  prim_rois.shape[0] // len(prim_sampling_results), dim=0)
+
+        if aux_gt_bboxes_ignore is None:
+            aux_gt_bboxes_ignore = [None for _ in range(num_imgs)]
         aux_sampling_results = []
-        for i in range(aux_proposal_list):
-            aux_assign_result = self.bbox_assigner.assign(
-                aux_proposal_list[i], aux_gt_bboxes[i], aux_gt_bboxes_ignore[i], aux_gt_labels[i])
-            aux_sampling_result = self.bbox_sampler.sample(
-                aux_assign_result,
-                aux_proposal_list[i],
-                aux_gt_bboxes[i],
-                aux_gt_labels[i],
-                feats=[lvl_feat[i][None] for lvl_feat in aux_feats])
+        for i in range(num_imgs):
+            aux_sampling_result = self.modify_assign_result(prim_sampling_results[i], aux_proposal_list[i])
             aux_sampling_results.append(aux_sampling_result)
-        aux_targets = self.aux_bbox_head.get_targets(aux_sampling_results, aux_gt_bboxes, aux_gt_labels, self.train_cfg)
+
+        aux_targets = self.aux_bbox_head.get_targets(aux_sampling_results, aux_gt_bboxes, aux_gt_labels, self.aux_train_cfg)
 
         aux_rois_box = aux_rois[:, 1:]
-        aux_loss = self._aux_loss(aux_rois_box, *aux_targets, self.prim_bbox_head.num_classes)
+        aux_offset_loss = self._aux_offset_loss(aux_rois_box, *aux_targets, self.prim_bbox_head.num_classes)
 
         prim_loss_bbox = self.prim_bbox_head.loss(bbox_results['prim_cls_score'], 
                                                   bbox_results['prim_bbox_pred'], 
@@ -735,13 +778,38 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
         aux_loss_bbox = {"aux_" + k: v for k,v in aux_loss_bbox.items()}
         bbox_results.update(prim_loss_bbox=prim_loss_bbox)
         bbox_results.update(aux_loss_bbox=aux_loss_bbox)
-        bbox_results.update(aux_loss=aux_loss)
+        bbox_results.update(aux_offset_loss=aux_offset_loss)
 
         return bbox_results
 
 
+    def modify_assign_result(self, prim_sampling_result, aux_proposals):
+        """
+            sampling results:
+                neg_bboxes 
+                neg_inds
+                num_gts
+                pos_assigned_gt_inds
+                pos_bboxes
+                pos_inds
+                pos_is_gt
+            #! sampling_result 中将 pos_bboxes 和 neg_bboxes合并后返回
+        """
+        aux_sampling_result = copy.copy(prim_sampling_result)
+        device = aux_sampling_result.pos_inds.device
+        n_pos = aux_sampling_result.pos_inds.shape[0]
+        n_neg = aux_sampling_result.neg_inds.shape[0]
+
+        aux_sampling_result.pos_inds = torch.arange(0, n_pos, dtype=torch.int64, device=device)
+        aux_sampling_result.neg_inds = torch.arange(n_pos, (n_pos + n_neg), dtype=torch.int64, device=device)    
+        aux_sampling_result.pos_bboxes = aux_proposals[:n_pos]
+        aux_sampling_result.neg_bboxes = aux_proposals[n_pos:]
+        
+        return aux_sampling_result
+
+
     @force_fp32(apply_to=('bbox_pred', ))
-    def _aux_loss(self, 
+    def _aux_offset_loss(self, 
                   bbox_pred,
                   labels,
                   labels_weights, 
@@ -757,12 +825,14 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
             pos_bbox_pred = bbox_pred.view(
                         bbox_pred.size(0), -1, 4)[pos_inds.type(torch.bool), labels[pos_inds.type(torch.bool)]]
 
-        losses['loss_bbox'] = self.aux_loss(
-            pos_bbox_pred,
-            bbox_targets[pos_inds.type(torch.bool)],
-            bbox_weights[pos_inds.type(torch.bool)],
-            avg_factor=bbox_targets.size(0),
-            reduction_override=reduction_override)
+            losses['aux_offset_loss'] = self.aux_offset_loss(
+                pos_bbox_pred,
+                bbox_targets[pos_inds.type(torch.bool)],
+                bbox_weights[pos_inds.type(torch.bool)],
+                avg_factor=bbox_targets.size(0),
+                reduction_override=reduction_override)
+        else:
+            losses['aux_offset_loss'] = bbox_pred[pos_inds].sum()
 
         return losses
 
@@ -824,14 +894,14 @@ class DualCervixDualDetPrimAuxAuxLossRoiHead(DualCervixDualDetPrimAuxRoiHead):
                            rescale=False):
         # 没有辅助模态没有 rpn
         assert aux_proposals == None
-       
+        # print(len(prim_proposals), [x.shape for x in prim_proposals])
         #! attention
         if self.attention:
             prim_feats = self.attention(prim_feats, aux_feats)
         
         prim_rois = bbox2roi(prim_proposals)
         bbox_results, aux_rois = self._bbox_forward(prim_feats, aux_feats, prim_rois)
-
+        aux_proposals = torch.split(aux_rois[:, 1:],  prim_rois.shape[0] // len(prim_proposals), dim=0)
 
         # 预测结果的处理
         img_shapes = tuple(meta['img_shape'] for meta in img_metas)

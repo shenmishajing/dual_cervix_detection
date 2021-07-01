@@ -7,7 +7,7 @@ from mmcv.runner import auto_fp16
 
 @DETECTORS.register_module()
 class FasterPrimAuxDetector(TwoStageDetector):
-
+    #! 双模态，单检测结果，现在已经不用了，可以删除
 
     def __init__(self, 
                  prim_backbone, aux_backbone,
@@ -162,7 +162,14 @@ class FasterPrimAuxDetector(TwoStageDetector):
 
 @DETECTORS.register_module()
 class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
-
+    """
+    #! 双模态，双检测，
+    #! 适用于的配置文件夹有 
+        configs/_cervix/hsil/dual/att_offset
+        configs/_cervix/hsil/dual/dualfpnfuse
+        configs/_cervix/hsil/dual/fpnalignfuse
+        configs/_cervix/hsil/dual/fpnfuse
+    """
     def __init__(self,  
                  prim_backbone, aux_backbone,
                  prim_neck, aux_neck,
@@ -175,7 +182,6 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
         super(TwoStageDetector, self).__init__()
         assert roi_head
         
-        self.dual_det = True
         self.prim_backbone = build_backbone(prim_backbone)
         self.aux_backbone = build_backbone(aux_backbone)
 
@@ -349,3 +355,137 @@ class FasterPrimAuxDualDetector(FasterPrimAuxDetector):
                                          img_metas,
                                          prim_proposals, aux_proposals,
                                          rescale=rescale)
+
+
+@DETECTORS.register_module()
+class FasterPrimAuxAuxOffsetLossDualDetector(FasterPrimAuxDetector):
+    #! 最后尝试的idea，由于idea和上面的框架不相容，重新写了这个类，改了几个不兼容的部分
+    #! 配置文件是 configs/_cervix/hsil/dual/auxoffsetloss
+    def __init__(self, 
+                 prim_backbone, aux_backbone, 
+                 prim_neck, aux_neck, 
+                 prim_rpn_head, 
+                 roi_head, 
+                 aug_acid, 
+                 train_cfg, 
+                 test_cfg, 
+                 pretrained):
+        super(TwoStageDetector, self).__init__()
+        assert roi_head
+        
+        self.prim_backbone = build_backbone(prim_backbone)
+        self.aux_backbone = build_backbone(aux_backbone)
+
+        self.prim_neck = build_neck(prim_neck)
+        self.aux_neck = build_neck(aux_neck)
+
+        prim_rpn_train_cfg = train_cfg.prim_rpn if train_cfg is not None else None
+
+        prim_rpn_head_ = prim_rpn_head.copy()
+        prim_rpn_head_.update(train_cfg=prim_rpn_train_cfg, test_cfg=test_cfg.prim_rpn)
+        self.prim_rpn_head = build_head(prim_rpn_head_)
+        
+        prim_rcnn_train_cfg = train_cfg.prim_rcnn if train_cfg is not None else None 
+        aux_rcnn_train_cfg = train_cfg.aux_rcnn if train_cfg is not None else None 
+
+        roi_head.update(prim_train_cfg=prim_rcnn_train_cfg, aux_train_cfg=aux_rcnn_train_cfg)
+        roi_head.update(test_cfg=test_cfg.rcnn)
+        self.roi_head = build_head(roi_head)
+
+        self.aug_acid = aug_acid
+        self.train_cfg = train_cfg
+        self.test_cfg = test_cfg
+
+        self.init_weights(pretrained=pretrained)
+
+
+    def init_weights(self, pretrained=None):
+        self.prim_backbone.init_weights(pretrained)
+        self.prim_neck.init_weights()
+        self.prim_rpn_head.init_weights()
+
+        self.aux_backbone.init_weights(pretrained)        
+        self.aux_neck.init_weights()
+
+        self.roi_head.init_weights()
+
+
+    def forward_train(self, 
+                      acid_img, iodine_img,
+                      img_metas, 
+                      acid_gt_bboxes, iodine_gt_bboxes,
+                      acid_gt_labels, iodine_gt_labels,
+                      acid_gt_bboxes_ignore=None, iodine_gt_bboxes_ignore=None,
+                      acid_proposals=None, iodine_proposals=None,
+                      **kwargs):
+
+        if self.aug_acid:
+            prim_img = acid_img
+            aux_img = iodine_img
+            prim_gt_bboxes = acid_gt_bboxes
+            prim_gt_labels = acid_gt_labels
+            prim_gt_bboxes_ignore = acid_gt_bboxes_ignore
+            prim_proposal = acid_proposals
+
+            aux_gt_bboxes = iodine_gt_bboxes
+            aux_gt_labels = iodine_gt_labels
+            aux_gt_bboxes_ignore = iodine_gt_bboxes_ignore
+            aux_proposals = iodine_proposals
+        else:
+            prim_img = iodine_img
+            aux_img = acid_img
+            prim_gt_bboxes = iodine_gt_bboxes
+            prim_gt_labels = iodine_gt_labels
+            prim_gt_bboxes_ignore = iodine_gt_bboxes_ignore
+            prim_proposal = iodine_proposals
+
+            aux_gt_bboxes = acid_gt_bboxes
+            aux_gt_labels = acid_gt_labels
+            aux_gt_bboxes_ignore = acid_gt_bboxes_ignore
+            aux_proposals = acid_proposals
+
+        prim_feats, aux_feats = self.extract_feat(prim_img, aux_img)
+
+        losses = dict()
+        prim_rpn_proposal = self.train_cfg.get('prim_rpn_proposal', self.test_cfg.prim_rpn)
+        prim_rpn_losses, prim_proposal_list = self.prim_rpn_head.forward_train(
+            prim_feats, 
+            img_metas, 
+            prim_gt_bboxes,
+            gt_labels=None,
+            gt_bboxes_ignore=prim_gt_bboxes_ignore,
+            proposal_cfg=prim_rpn_proposal)
+        
+        losses.update({"prim_" + k: v  for k,v in prim_rpn_losses.items()})
+
+
+        aux_proposal_list = None
+        roi_losses = self.roi_head.forward_train(prim_feats, aux_feats,
+                                                 img_metas, 
+                                                 prim_proposal_list, None,
+                                                 prim_gt_bboxes, prim_gt_labels, prim_gt_bboxes_ignore,
+                                                 aux_gt_bboxes, aux_gt_labels, aux_gt_bboxes_ignore)
+        
+        losses.update(roi_losses)
+        
+        return losses    
+
+
+    def simple_test(self, 
+                    prim_img, aux_img, 
+                    img_metas, 
+                    prim_proposals=None, aux_proposals=None,
+                    rescale=False):
+        prim_feats, aux_feats = self.extract_feat(prim_img, aux_img)
+        if prim_proposals is None:
+            prim_proposal_list = self.prim_rpn_head.simple_test_rpn(prim_feats, img_metas)
+            aux_proposal_list = None
+        else:
+            prim_proposal_list = prim_proposals
+            aux_proposal_list = aux_proposals
+
+        return self.roi_head.simple_test(prim_feats, aux_feats, 
+                                         prim_proposal_list, aux_proposal_list, 
+                                         img_metas,
+                                         prim_proposals, None,
+                                         rescale=rescale)  

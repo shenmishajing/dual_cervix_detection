@@ -46,7 +46,7 @@ import matplotlib.pyplot as plt
 """
 
 class CervixDataset(CocoDataset):
-
+    #! 单、双模态dataset都要用到相同的评价，所以写了这个父类来完成指标评价部分
 
     def convert_dets_format(self, dets):
         """ 
@@ -364,6 +364,7 @@ class CervixDataset(CocoDataset):
 @DATASETS.register_module()
 class DualCervixDataset(CervixDataset):
     """ 
+    最先好看看CocoDataset和CustomDataset，理解一下数据是怎么加载、处理的
     由acid_coco, iodine_coco构成数据集
     """
     CLASSES = ('lsil', 'hsil')
@@ -379,6 +380,22 @@ class DualCervixDataset(CervixDataset):
                  proposal_file=None,                
                  test_mode=False,
                  filter_empty_gt=True):
+        """
+
+        Args:
+            prim (str): "acid", "iodine", None. prim="acid", 表示用iodine来辅助acid.主要影响下面的evaluation。
+                检测模型的返回的检测结果是把主模态放在前面，辅助模态的结果放在后面[prim_result_1, acid_result_1, prim_result_2, acid_result_2, ...]
+                当前模型是醋酸为主模态碘为辅助模态时，醋酸的结果放在前面，碘的结果放在后面
+            acid_ann_file ([type]): 醋酸的标注文件
+            iodine_ann_file ([type]): 碘的标注文件
+            pipeline ([type]): 数据增强
+            classes ([type]): 类别名
+            data_root ([type], optional): [description]. Defaults to None.
+            img_prefix (str, optional): [description]. Defaults to ''.
+            proposal_file ([type], optional): [description]. Defaults to None.
+            test_mode (bool, optional): [description]. Defaults to False.
+            filter_empty_gt (bool, optional): [description]. Defaults to True.
+        """
         assert prim in ('acid', 'iodine', None)
         #! single_gpu_test 依赖prim
         self.prim = prim
@@ -711,7 +728,23 @@ class DualCervixDataset(CervixDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=None,
                  metric_items=None):
+        """
         #! 双检测的结果[prim_result, aux_result, prim_result, aux_result, ....]
+        #! coco 中的指标计算方法，搬过来，修改适应双模态的评估(COCO的评价指标)。这是最一开始的评价指标，已经不用了。
+        #! 现在用的是CervixDataset中指标计算方法，就是那一大串指标。
+        Args:
+            results ([type]): [description]
+            metric (str, optional): [description]. Defaults to 'bbox'.
+            logger ([type], optional): [description]. Defaults to None.
+            jsonfile_prefix ([type], optional): [description]. Defaults to None.
+            classwise (bool, optional): [description]. Defaults to False.
+            proposal_nums (tuple, optional): [description]. Defaults to (100, 300, 1000).
+            iou_thrs ([type], optional): [description]. Defaults to None.
+            metric_items ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
         prim_results = []
         aux_results = []
         for i in range(len(results) // 2):
@@ -958,6 +991,22 @@ class DualCervixDataset(CervixDataset):
                  proposal_nums=(100, 300, 1000),
                  iou_thrs=None,
                  metric_items=None):
+        """将醋酸和碘的检测结果分离出来，分别计算评价指标
+
+        Args:
+            results (list): 检测模型返回出来的结果, [prim_result_1, acid_result_1, prim_result_2, acid_result_2, ...]
+            下面的参数没用，不用管。本来是cocodataset接口中参数
+            metric (str, optional): [description]. Defaults to 'bbox'.
+            logger ([type], optional): [description]. Defaults to None.
+            jsonfile_prefix ([type], optional): [description]. Defaults to None.
+            classwise (bool, optional): [description]. Defaults to False.
+            proposal_nums (tuple, optional): [description]. Defaults to (100, 300, 1000).
+            iou_thrs ([type], optional): [description]. Defaults to None.
+            metric_items ([type], optional): [description]. Defaults to None.
+
+        Returns:
+            [type]: [description]
+        """
         prim_results = []
         aux_results = []
         for i in range(len(results) // 2):
@@ -983,7 +1032,7 @@ class DualCervixDataset(CervixDataset):
 
 @DATASETS.register_module()
 class SingleCervixDataset(CervixDataset):
-
+    #! 单模态模型本来可以直接采用默认的cocodataset，但是由于必须用指定的评价指标就重新写了这个类，与cocodataset只是指标计算部分不同
     CLASSES = ('lsil', 'hsil')
     
     def __init__(self,
@@ -1006,6 +1055,7 @@ class SingleCervixDataset(CervixDataset):
                                                   proposal_file, 
                                                   test_mode, 
                                                   filter_empty_gt)
+        #! img_type 取值为acid, iodine，用来加到评估指标的命名中
         self.img_type = img_type
         self._iou_threshs = list(range(50, 100, 5))
         self._max_dets = [1, 2, 3, 5, 10, 100] 
