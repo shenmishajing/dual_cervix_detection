@@ -1,4 +1,5 @@
 from .atss import ATSS
+from .atss_dual import ATSSDual
 from .autoassign import AutoAssign
 from .base import BaseDetector
 from .cascade_rcnn import CascadeRCNN
@@ -35,9 +36,8 @@ from .yolof import YOLOF
 from .sparse_reppoints_detector import SparseRepPointsDetector
 from .dual_cervix_faster import FasterPrimAuxDetector, FasterPrimAuxAuxOffsetLossDualDetector
 
-
 __all__ = [
-    'ATSS', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
+    'ATSS', 'ATSSDual', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
     'KnowledgeDistillationSingleStageDetector', 'FastRCNN', 'FasterRCNN',
     'MaskRCNN', 'CascadeRCNN', 'HybridTaskCascade', 'RetinaNet', 'FCOS',
     'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector', 'FOVEA', 'FSAF',
