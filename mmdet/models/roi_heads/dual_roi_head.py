@@ -162,18 +162,6 @@ class DualRoIHead(StandardRoIHead):
         #     cur_rois = cur_rois + iodine_offsets_added[i]
         #     iodine_acid_rois.append(cur_rois)
         # iodine_acid_rois = torch.cat(iodine_acid_rois)
-
-        acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
-        acid_proposal_offsets = self._offset_forward(acid_bbox_feats, stage = 1)
-        acid_proposal_offsets_scaled = acid_proposal_offsets * torch.cat(
-            [acid_rois[:, 3, None] - acid_rois[:, 1, None], acid_rois[:, 4, None] - acid_rois[:, 2, None]], dim = 1)
-        acid_proposal_offsets_added = torch.cat(
-            [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1), acid_proposal_offsets_scaled,
-             acid_proposal_offsets_scaled], dim = 1)
-        acid_iodine_rois = acid_rois + acid_proposal_offsets_added
-        acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
-        acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
-
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
         iodine_proposal_offsets = self._offset_forward(iodine_bbox_feats, stage = 1)
         iodine_proposal_offsets_scaled = iodine_proposal_offsets * torch.cat(
