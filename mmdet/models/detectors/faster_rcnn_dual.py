@@ -11,6 +11,15 @@ from .two_stage import TwoStageDetector
 class FasterRCNNDual(TwoStageDetector):
     """Implementation of `Faster R-CNN <https://arxiv.org/abs/1506.01497>`_"""
 
+    def __init__(self, prim = None, *args, **kwargs):
+        super(FasterRCNNDual, self).__init__(*args, **kwargs)
+        if prim is None:
+            self.prim = ['acid', 'iodine']
+        elif not isinstance(prim, list):
+            self.prim = [prim]
+        else:
+            self.prim = prim
+
     def extract_feat(self, acid_img, iodine_img):
         """Directly extract features from the backbone+neck."""
         return super(FasterRCNNDual, self).extract_feat(acid_img), super(FasterRCNNDual, self).extract_feat(iodine_img)
@@ -36,13 +45,15 @@ class FasterRCNNDual(TwoStageDetector):
             acid_rpn_losses, acid_proposal_list = self.rpn_head.forward_train(
                 acid_feats, img_metas, acid_gt_bboxes, gt_labels = None, gt_bboxes_ignore = acid_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
-            for k, v in acid_rpn_losses.items():
-                losses['acid_' + k] = v
+            if 'acid' in self.prim:
+                for k, v in acid_rpn_losses.items():
+                    losses['acid_' + k] = v
             iodine_rpn_losses, iodine_proposal_list = self.rpn_head.forward_train(
                 iodine_feats, img_metas, iodine_gt_bboxes, gt_labels = None, gt_bboxes_ignore = iodine_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
-            for k, v in iodine_rpn_losses.items():
-                losses['iodine_' + k] = v
+            if 'iodine' in self.prim:
+                for k, v in iodine_rpn_losses.items():
+                    losses['iodine_' + k] = v
         else:
             acid_proposal_list = acid_proposals
             iodine_proposal_list = iodine_proposals
@@ -50,7 +61,9 @@ class FasterRCNNDual(TwoStageDetector):
         roi_losses = self.roi_head.forward_train(
             acid_feats, iodine_feats, img_metas, acid_proposal_list, iodine_proposal_list, acid_gt_bboxes, iodine_gt_bboxes, acid_gt_labels,
             iodine_gt_labels, acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None, **kwargs)
-        losses.update(roi_losses)
+        for k, v in roi_losses.items():
+            if any([name in k for name in self.prim]):
+                losses[k] = v
 
         return losses
 
