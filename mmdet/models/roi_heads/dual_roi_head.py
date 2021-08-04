@@ -14,19 +14,22 @@ class DualRoIHead(StandardRoIHead):
     def __init__(self,
                  offset_level = 0,
                  offset_generator = dict(
-                     r = [50, 100, 200],
-                     theta = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
+                     scale = [0, 50, 100, 150, 200]
                  ),
                  **kwargs):
         super(DualRoIHead, self).__init__(**kwargs)
         self.offset_level = offset_level
         self.offset_generator = offset_generator
-        self.offset_anchors = [
-            [0, 0], [50, 0], [100, 0], [200, 0],
-            [0, 1], [50, 1], [100, 1], [200, 1],
-            [0, 0.5], [25, 0.5], [50, 0.5],
-            [0, -0.5], [25, -0.5], [50, -0.5],
-        ]
+        self.offset_anchors = []
+        for x in self.offset_generator['scale']:
+            for y in self.offset_generator['scale']:
+                self.offset_anchors.append([x, y])
+                if x != 0:
+                    self.offset_anchors.append([-x, y])
+                if y != 0:
+                    self.offset_anchors.append([x, -y])
+                if x * y != 0:
+                    self.offset_anchors.append([-x, -y])
         self._offset_anchors_tensor = None
         self.offset_nums = len(self.offset_anchors)
         self.offset_pool = nn.AdaptiveAvgPool2d((1, 1))
@@ -48,13 +51,34 @@ class DualRoIHead(StandardRoIHead):
         ])
 
     @property
+    def offset_anchors_tensor(self):
+        return self._offset_anchors_tensor
+
+    @offset_anchors_tensor.setter
     def offset_anchors_tensor(self, tensor = None):
         if self._offset_anchors_tensor is None:
             self._offset_anchors_tensor = tensor.new_tensor(self.offset_anchors)
-        return self._offset_anchors_tensor
 
-    def offset_apply_delta(self, offset, delta):
-        pass
+    def offset_apply_delta(self, offset, delta, img_metas):
+        assert offset.shape[-1] == 2, 'offset anchor must have 2 dimensions'
+        assert delta.shape[-1] == 2 or delta.shape[-1] == 3, 'offset delta must have 2 or 3 dimensions'
+        res = []
+        for i in range(len(img_metas)):
+            h, w = img_metas[i]['pad_shape'][:2]
+            x_anchor, y_anchor = offset.chunk(2, dim = -1)
+            x_delta, y_delta = delta[i].chunk(delta.shape[-1], dim = -1)[:2]
+            x = x_anchor + x_delta * w
+            y = y_anchor + y_delta * h
+            res.append(torch.cat([x, y], dim = -1) if delta.shape[-1] == 2 else torch.cat([x, y, delta[i, ..., -1, None]], dim = -1))
+        return torch.stack(res)
+
+    def get_offset(self, offsets):
+        offset_inds = torch.max(offsets[..., -1], 1)[1]
+        offset = []
+        for i in range(len(offset_inds)):
+            offset.append(offsets[i, offset_inds[i], :2])
+        offset = torch.stack(offset)
+        return offset
 
     def forward_train(self,
                       acid_feats, iodine_feats,
@@ -131,28 +155,25 @@ class DualRoIHead(StandardRoIHead):
     def _bbox_forward(self, acid_feats, iodine_feats, acid_rois, iodine_rois, img_metas):
         """Box head forward function used in both training and testing."""
         # # offset
-        self.offset_anchors_tensor(acid_feats[0])
+        self.offset_anchors_tensor = acid_feats[0]
         acid_feat, iodine_feat = acid_feats[self.offset_level], iodine_feats[self.offset_level]
         global_offsets = self._offset_forward(torch.cat([acid_feat, iodine_feat], dim = 1), stage = 0)
-        # global_offsets_scaled = []
-        # for i in range(len(img_metas)):
-        #     global_offsets_scaled.append(global_offsets[i] * global_offsets.new_tensor(img_metas[i]['pad_shape'][:2]))
-        # global_offsets_scaled = torch.stack(global_offsets_scaled)
-        #
-        # # acid
-        # acid_offsets_added = torch.cat(
-        #     [global_offsets_scaled.new_zeros((global_offsets_scaled.shape[0], 1)), global_offsets_scaled, global_offsets_scaled], dim = 1)
-        # acid_iodine_rois = []
-        # for i in range(len(acid_offsets_added)):
-        #     cur_rois = acid_rois[acid_rois[:, 0] == i]
-        #     cur_rois = cur_rois + acid_offsets_added[i]
-        #     acid_iodine_rois.append(cur_rois)
-        # acid_iodine_rois = torch.cat(acid_iodine_rois)
-        acid_iodine_rois = acid_rois.clone()
+        global_offsets_scaled = self.offset_apply_delta(self.offset_anchors_tensor, global_offsets, img_metas)
+        global_offset = self.get_offset(global_offsets_scaled)
+
+        # acid
+        acid_offsets_added = torch.cat([global_offset.new_zeros((global_offset.shape[0], 1)), global_offset, global_offset], dim = 1)
+        acid_iodine_rois = []
+        for i in range(len(acid_offsets_added)):
+            cur_rois = acid_rois[acid_rois[:, 0] == i]
+            cur_rois = cur_rois + acid_offsets_added[i]
+            acid_iodine_rois.append(cur_rois)
+        acid_iodine_rois = torch.cat(acid_iodine_rois)
         acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim = 1), stage = 1)
-        acid_proposal_offsets_scaled = acid_proposal_offsets * torch.cat(
+        acid_proposal_offset = self.get_offset(acid_proposal_offsets)
+        acid_proposal_offsets_scaled = acid_proposal_offset * torch.cat(
             [acid_rois[:, 3, None] - acid_rois[:, 1, None], acid_rois[:, 4, None] - acid_rois[:, 2, None]], dim = 1)
         acid_proposal_offsets_added = torch.cat(
             [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1), acid_proposal_offsets_scaled,
@@ -161,21 +182,19 @@ class DualRoIHead(StandardRoIHead):
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_bbox_feats = acid_bbox_feats + acid_iodine_bbox_feats
 
-        # # iodine
-        # iodine_offsets_added = torch.cat(
-        #     [global_offsets_scaled.new_zeros((global_offsets_scaled.shape[0], 1)), -global_offsets_scaled, -global_offsets_scaled],
-        #     dim = 1)
-        # iodine_acid_rois = []
-        # for i in range(len(iodine_offsets_added)):
-        #     cur_rois = iodine_rois[iodine_rois[:, 0] == i]
-        #     cur_rois = cur_rois + iodine_offsets_added[i]
-        #     iodine_acid_rois.append(cur_rois)
-        # iodine_acid_rois = torch.cat(iodine_acid_rois)
-        iodine_acid_rois = acid_rois.clone()
+        # iodine
+        iodine_offsets_added = torch.cat([global_offset.new_zeros((global_offset.shape[0], 1)), global_offset, global_offset], dim = 1)
+        iodine_acid_rois = []
+        for i in range(len(iodine_offsets_added)):
+            cur_rois = iodine_rois[iodine_rois[:, 0] == i]
+            cur_rois = cur_rois + iodine_offsets_added[i]
+            iodine_acid_rois.append(cur_rois)
+        iodine_acid_rois = torch.cat(iodine_acid_rois)
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
         iodine_acid_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_acid_rois)
         iodine_proposal_offsets = self._offset_forward(torch.cat([iodine_bbox_feats, iodine_acid_bbox_feats], dim = 1), stage = 1)
-        iodine_proposal_offsets_scaled = iodine_proposal_offsets * torch.cat(
+        iodine_proposal_offset = self.get_offset(iodine_proposal_offsets)
+        iodine_proposal_offsets_scaled = iodine_proposal_offset * torch.cat(
             [iodine_rois[:, 3, None] - iodine_rois[:, 1, None], iodine_rois[:, 4, None] - iodine_rois[:, 2, None]], dim = 1)
         iodine_proposal_offsets_added = torch.cat(
             [iodine_proposal_offsets_scaled.new_zeros((iodine_proposal_offsets_scaled.shape[0], 1)), iodine_proposal_offsets_scaled,
@@ -214,7 +233,7 @@ class DualRoIHead(StandardRoIHead):
         bbox_targets = self.bbox_head.get_targets(acid_sampling_results, iodine_sampling_results,
                                                   acid_gt_bboxes, iodine_gt_bboxes,
                                                   acid_gt_labels, iodine_gt_labels,
-                                                  img_metas, self.train_cfg)
+                                                  self.offset_anchors_tensor, img_metas, self.train_cfg)
         loss_bbox = self.bbox_head.loss(bbox_results['acid_cls_score'], bbox_results['iodine_cls_score'],
                                         bbox_results['acid_bbox_pred'], bbox_results['iodine_bbox_pred'],
                                         bbox_results['acid_proposal_offsets'], bbox_results['iodine_proposal_offsets'],

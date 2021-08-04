@@ -28,6 +28,19 @@ class DualBBoxHead(Shared2FCBBoxHead):
         iodine_cls_score, iodine_bbox_pred = super(DualBBoxHead, self).forward(iodine_bbox_feats)
         return acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred
 
+    def match_gt_offset(self, offset_anchors, offset_targets):
+        distance = torch.sqrt(torch.sum((offset_anchors[:, None, :] - offset_targets[None, ...]) ** 2, dim = -1))
+        match_res = offset_anchors.new_full((len(offset_anchors),), -1)
+        min_inds = torch.min(distance, dim = 0)[1]
+        for i in range(len(offset_targets)):
+            cur_ind = min_inds[i]
+            if match_res[cur_ind] == -1:
+                match_res[cur_ind] = i
+            else:
+                if distance[cur_ind, i] < distance[cur_ind, match_res[cur_ind]]:
+                    match_res[cur_ind] = i
+        return match_res
+
     def _get_target_single(self,
                            acid_pos_bboxes, iodine_pos_bboxes,
                            acid_neg_bboxes, iodine_neg_bboxes,
@@ -35,7 +48,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                            acid_pos_gt_labels, iodine_pos_gt_labels,
                            acid_gt_bboxes, iodine_gt_bboxes,
                            acid_pos_assigned_gt_inds, iodine_pos_assigned_gt_inds,
-                           img_meta, cfg):
+                           offset_anchors, img_meta, cfg):
         """Calculate the ground truth for proposals in the single image
         according to the sampling results.
 
@@ -76,6 +89,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_iodine_offsets = iodine_gt_bboxes - acid_gt_bboxes
         acid_iodine_offsets = (acid_iodine_offsets[:, :2] + acid_iodine_offsets[:, 2:]) / 2
         global_offset_targets = torch.mean(acid_iodine_offsets, dim = 0, keepdim = True)
+        offset_match_res = self.match_gt_offset(offset_anchors, global_offset_targets)
         global_offset_targets = global_offset_targets / global_offset_targets.new_tensor(img_meta['pad_shape'][:2])
 
         # acid
@@ -170,7 +184,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                     acid_sampling_results, iodine_sampling_results,
                     acid_gt_bboxes, iodine_gt_bboxes,
                     acid_gt_labels, iodine_gt_labels,
-                    img_metas, rcnn_train_cfg,
+                    offset_anchors, img_metas, rcnn_train_cfg,
                     concat = True):
         """Calculate the ground truth for all samples in a batch according to
         the sampling_results.
@@ -225,6 +239,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
         iodine_pos_gt_bboxes_list = [res.pos_gt_bboxes for res in iodine_sampling_results]
         iodine_pos_gt_labels_list = [res.pos_gt_labels for res in iodine_sampling_results]
         iodine_pos_assigned_gt_inds_list = [res.info['pos_assigned_gt_inds'] for res in iodine_sampling_results]
+
+        offset_anchors_list = [offset_anchors for _ in range(len(img_metas))]
         bbox_targets = multi_apply(
             self._get_target_single,
             acid_pos_bboxes_list, iodine_pos_bboxes_list,
@@ -233,7 +249,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
             acid_pos_gt_labels_list, iodine_pos_gt_labels_list,
             acid_gt_bboxes, iodine_gt_bboxes,
             acid_pos_assigned_gt_inds_list, iodine_pos_assigned_gt_inds_list,
-            img_metas, cfg = rcnn_train_cfg)
+            offset_anchors_list, img_metas, cfg = rcnn_train_cfg)
 
         if concat:
             bbox_targets = [torch.cat(b) for b in bbox_targets]
