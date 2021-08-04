@@ -73,10 +73,6 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_gt_bboxes = acid_gt_bboxes[acid_gt_bboxes_inds]
         iodine_gt_bboxes_inds = iodine_gt_bboxes[:, 0].sort()[1]
         iodine_gt_bboxes = iodine_gt_bboxes[iodine_gt_bboxes_inds]
-        acid_iodine_offsets = iodine_gt_bboxes - acid_gt_bboxes
-        acid_iodine_offsets = (acid_iodine_offsets[:, :2] + acid_iodine_offsets[:, 2:]) / 2
-        global_offset_targets = torch.mean(acid_iodine_offsets, dim = 0, keepdim = True)
-        global_offset_targets = global_offset_targets / global_offset_targets.new_tensor(img_meta['pad_shape'][:2])
 
         # acid
         acid_num_pos = acid_pos_bboxes.size(0)
@@ -111,8 +107,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 acid_offset_target = torch.mean(iodine_gt_bboxes[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 1)
                 acid_offset_target = acid_offset_target - acid_pos_bboxes[i, :]
                 acid_offset_target = (acid_offset_target[:2] + acid_offset_target[2:]) / 2
-                acid_offset_target = acid_offset_target / torch.stack(
-                    [acid_pos_bboxes[i, 2] - acid_pos_bboxes[i, 0], acid_pos_bboxes[i, 3] - acid_pos_bboxes[i, 1]])
+                acid_offset_target = acid_offset_target / acid_offset_target.new_tensor(img_meta['pad_shape'][:2])
                 acid_offset_targets[i, :] = acid_offset_target
             acid_offset_weights[:acid_num_pos, :] = 1
         if acid_num_neg > 0:
@@ -151,8 +146,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 iodine_offset_target = torch.mean(acid_gt_bboxes[iodine_gt_bboxes_inds == iodine_pos_assigned_gt_inds[i]], dim = 1)
                 iodine_offset_target = iodine_offset_target - iodine_pos_bboxes[i, :]
                 iodine_offset_target = (iodine_offset_target[:2] + iodine_offset_target[2:]) / 2
-                iodine_offset_target = iodine_offset_target / torch.stack(
-                    [iodine_pos_bboxes[i, 2] - iodine_pos_bboxes[i, 0], iodine_pos_bboxes[i, 3] - iodine_pos_bboxes[i, 1]])
+                iodine_offset_target = iodine_offset_target / iodine_offset_target.new_tensor(img_meta['pad_shape'][:2])
                 iodine_offset_targets[i, :] = iodine_offset_target
             iodine_offset_weights[:iodine_num_pos, :] = 1
         if iodine_num_neg > 0:
@@ -163,8 +157,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 acid_bbox_targets, iodine_bbox_targets,
                 acid_bbox_weights, iodine_bbox_weights,
                 acid_offset_targets, iodine_offset_targets,
-                acid_offset_weights, iodine_offset_weights,
-                global_offset_targets)
+                acid_offset_weights, iodine_offset_weights)
 
     def get_targets(self,
                     acid_sampling_results, iodine_sampling_results,
@@ -244,7 +237,6 @@ class DualBBoxHead(Shared2FCBBoxHead):
              acid_cls_score, iodine_cls_score,
              acid_bbox_pred, iodine_bbox_pred,
              acid_proposal_offsets, iodine_proposal_offsets,
-             global_offsets,
              acid_rois, iodine_rois,
              acid_labels, iodine_labels,
              acid_label_weights, iodine_label_weights,
@@ -252,12 +244,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
              acid_bbox_weights, iodine_bbox_weights,
              acid_offset_targets, iodine_offset_targets,
              acid_offset_weights, iodine_offset_weights,
-             global_offset_targets,
              reduction_override = None):
         losses = dict()
-
-        # global offset
-        # losses['global_offset_loss'] = self.loss_offset(global_offsets, global_offset_targets)
 
         # acid
         if acid_cls_score is not None:
