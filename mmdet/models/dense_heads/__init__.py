@@ -27,6 +27,7 @@ from .reppoints_head import RepPointsHead
 from .retina_head import RetinaHead
 from .retina_sepbn_head import RetinaSepBNHead
 from .rpn_head import RPNHead
+from .rpn_atss_assigner_head import RPNATSSAssignerHead
 from .sabl_retina_head import SABLRetinaHead
 from .ssd_head import SSDHead
 from .vfnet_head import VFNetHead
@@ -37,7 +38,7 @@ from .sparse_reppoints_head import SparseRepPointsHead
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',
-    'RPNHead', 'GARPNHead', 'RetinaHead', 'RetinaSepBNHead', 'GARetinaHead',
+    'RPNHead', 'RPNATSSAssignerHead', 'GARPNHead', 'RetinaHead', 'RetinaSepBNHead', 'GARetinaHead',
     'SSDHead', 'FCOSHead', 'RepPointsHead', 'FoveaHead',
     'FreeAnchorRetinaHead', 'ATSSHead', 'ATSSDualHead', 'FSAFHead', 'NASFCOSHead',
     'PISARetinaHead', 'PISASSDHead', 'GFLHead', 'CornerHead', 'YOLACTHead',
