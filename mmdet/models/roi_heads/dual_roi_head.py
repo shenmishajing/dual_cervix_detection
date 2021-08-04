@@ -13,22 +13,9 @@ class DualRoIHead(StandardRoIHead):
 
     def __init__(self,
                  offset_level = 0,
-                 offset_generator = dict(
-                     r = [50, 100, 200],
-                     theta = [-0.75, -0.5, -0.25, 0, 0.25, 0.5, 0.75, 1]
-                 ),
                  **kwargs):
         super(DualRoIHead, self).__init__(**kwargs)
         self.offset_level = offset_level
-        self.offset_generator = offset_generator
-        self.offset_anchors = [
-            [0, 0], [50, 0], [100, 0], [200, 0],
-            [0, 1], [50, 1], [100, 1], [200, 1],
-            [0, 0.5], [25, 0.5], [50, 0.5],
-            [0, -0.5], [25, -0.5], [50, -0.5],
-        ]
-        self._offset_anchors_tensor = None
-        self.offset_nums = len(self.offset_anchors)
         self.offset_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.offset_modules = nn.ModuleList([
             nn.ModuleList([
@@ -36,25 +23,16 @@ class DualRoIHead(StandardRoIHead):
                 nn.ReLU(),
                 nn.Linear(self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
                 nn.ReLU(),
-                nn.Linear(self.bbox_head.conv_out_channels, 3 * self.offset_nums),
+                nn.Linear(self.bbox_head.conv_out_channels, 2),
             ]),
             nn.ModuleList([
                 nn.Linear(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
                 nn.ReLU(),
                 nn.Linear(self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
                 nn.ReLU(),
-                nn.Linear(self.bbox_head.conv_out_channels, 3 * self.offset_nums),
+                nn.Linear(self.bbox_head.conv_out_channels, 2),
             ])
         ])
-
-    @property
-    def offset_anchors_tensor(self, tensor = None):
-        if self._offset_anchors_tensor is None:
-            self._offset_anchors_tensor = tensor.new_tensor(self.offset_anchors)
-        return self._offset_anchors_tensor
-
-    def offset_apply_delta(self, offset, delta):
-        pass
 
     def forward_train(self,
                       acid_feats, iodine_feats,
@@ -130,8 +108,7 @@ class DualRoIHead(StandardRoIHead):
 
     def _bbox_forward(self, acid_feats, iodine_feats, acid_rois, iodine_rois, img_metas):
         """Box head forward function used in both training and testing."""
-        # # offset
-        self.offset_anchors_tensor(acid_feats[0])
+        # offset
         acid_feat, iodine_feat = acid_feats[self.offset_level], iodine_feats[self.offset_level]
         global_offsets = self._offset_forward(torch.cat([acid_feat, iodine_feat], dim = 1), stage = 0)
         # global_offsets_scaled = []
@@ -201,7 +178,7 @@ class DualRoIHead(StandardRoIHead):
         feat = feat.reshape(feat.shape[0], -1)
         for m in self.offset_modules[stage]:
             feat = m(feat)
-        feat = feat.reshape(*feat.shape[:-1], -1, 3)
+        feat = feat.reshape(*feat.shape[:-1], 2)
         return feat
 
     def _bbox_forward_train(self, acid_feats, iodine_feats, acid_sampling_results, iodine_sampling_results, acid_gt_bboxes,
