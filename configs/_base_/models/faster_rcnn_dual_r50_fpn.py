@@ -1,7 +1,7 @@
 # model settings
 model = dict(
     type = 'FasterRCNNDual',
-    prim = 'acid',  # acid, iodine or None
+    prim = None,  # acid, iodine or None
     backbone = dict(
         type = 'ResNet',
         depth = 50,
