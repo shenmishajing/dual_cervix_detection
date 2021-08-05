@@ -33,8 +33,8 @@ test_pipeline = [
         ])
 ]
 data = dict(
-    samples_per_gpu = 1,
-    workers_per_gpu = 1,
+    samples_per_gpu = 2,
+    workers_per_gpu = 2,
     train = dict(  # ! 具体查看dataset部分的cervix.py
         type = dataset_type,
         prim = 'acid',
