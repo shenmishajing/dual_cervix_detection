@@ -121,8 +121,8 @@ class DualRoIHead(StandardRoIHead):
         acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
         acid_iodine_rois = acid_rois.clone()
         if self.enlarge:
-            acid_iodine_rois = torch.cat([acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - 100, acid_iodine_rois[:, 3:] + 100],
-                                         dim = 1)
+            acid_iodine_rois = torch.cat(
+                [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim = 1))
         acid_proposal_offsets_scaled = []
@@ -142,8 +142,8 @@ class DualRoIHead(StandardRoIHead):
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
         iodine_acid_rois = acid_rois.clone()
         if self.enlarge:
-            iodine_acid_rois = torch.cat([iodine_acid_rois[:, 0, None], iodine_acid_rois[:, 1:3] - 100, iodine_acid_rois[:, 3:] + 100],
-                                         dim = 1)
+            iodine_acid_rois = torch.cat(
+                [iodine_acid_rois[:, 0, None], iodine_acid_rois[:, 1:3] - self.enlarge, iodine_acid_rois[:, 3:] + self.enlarge], dim = 1)
         iodine_acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], iodine_acid_rois)
         iodine_proposal_offsets = self._offset_forward(torch.cat([iodine_bbox_feats, iodine_acid_bbox_feats], dim = 1))
         iodine_proposal_offsets_scaled = []

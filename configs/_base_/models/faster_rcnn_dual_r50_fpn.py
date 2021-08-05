@@ -35,7 +35,7 @@ model = dict(
         loss_bbox = dict(type = 'L1Loss', loss_weight = 1.0)),
     roi_head = dict(
         type = 'DualRoIHead',
-        enlarge = True,
+        enlarge = 100,
         bbox_roi_extractor = dict(
             type = 'SingleRoIExtractor',
             roi_layer = dict(type = 'RoIAlign', output_size = 7, sampling_ratio = 0),
