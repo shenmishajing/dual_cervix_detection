@@ -75,7 +75,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
         iodine_gt_bboxes = iodine_gt_bboxes[iodine_gt_bboxes_inds]
         acid_iodine_offsets = iodine_gt_bboxes - acid_gt_bboxes
         acid_iodine_offsets = (acid_iodine_offsets[:, :2] + acid_iodine_offsets[:, 2:]) / 2
-        global_offset_targets = torch.mean(acid_iodine_offsets, keepdim = True)
+        global_offset_targets = torch.mean(acid_iodine_offsets, dim = 0, keepdim = True)
         global_offset_targets = global_offset_targets / global_offset_targets.new_tensor(img_meta['pad_shape'][:2])
 
         # acid
@@ -108,7 +108,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
             acid_bbox_targets[:acid_num_pos, :] = acid_pos_bbox_targets
             acid_bbox_weights[:acid_num_pos, :] = 1
             for i in range(acid_num_pos):
-                acid_offset_target = torch.mean(iodine_gt_bboxes[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]])
+                acid_offset_target = torch.mean(iodine_gt_bboxes[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
                 acid_offset_target = acid_offset_target - acid_pos_bboxes[i, :]
                 acid_offset_target = (acid_offset_target[:2] + acid_offset_target[2:]) / 2
                 acid_offset_target = acid_offset_target / torch.stack(
@@ -148,7 +148,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
             iodine_bbox_targets[:iodine_num_pos, :] = iodine_pos_bbox_targets
             iodine_bbox_weights[:iodine_num_pos, :] = 1
             for i in range(iodine_num_pos):
-                iodine_offset_target = torch.mean(acid_gt_bboxes[iodine_gt_bboxes_inds == iodine_pos_assigned_gt_inds[i]])
+                iodine_offset_target = torch.mean(acid_gt_bboxes[iodine_gt_bboxes_inds == iodine_pos_assigned_gt_inds[i]], dim = 0)
                 iodine_offset_target = iodine_offset_target - iodine_pos_bboxes[i, :]
                 iodine_offset_target = (iodine_offset_target[:2] + iodine_offset_target[2:]) / 2
                 iodine_offset_target = iodine_offset_target / torch.stack(
