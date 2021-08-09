@@ -5,7 +5,9 @@ _base_ = [
 ]
 
 # model settings
-model = dict(roi_head = dict(bbox_head = dict(num_classes = 1)))
+model = dict(roi_head = dict(
+    enlarge = 0,
+    bbox_head = dict(num_classes = 1)))
 
 log_config = dict(
     interval = 50,
