@@ -1,4 +1,6 @@
 import math
+import os
+import pickle
 import torch
 from torch import nn
 
@@ -181,11 +183,37 @@ class DualRoIHead(StandardRoIHead):
                                                   acid_gt_bboxes, iodine_gt_bboxes,
                                                   acid_gt_labels, iodine_gt_labels,
                                                   img_metas, self.train_cfg)
+        draw_offset_info = bbox_targets[-1]
+        for i in range(len(img_metas)):
+            cur_acid_inds = acid_rois[:, 0] == i
+            cur_acid_pos_num = len(acid_sampling_results[i].pos_bboxes)
+            cur_acid_proposal_offsets = bbox_results['acid_proposal_offsets'][cur_acid_inds][:cur_acid_pos_num]
+            cur_acid_proposal_offsets = cur_acid_proposal_offsets * cur_acid_proposal_offsets.new_tensor(img_metas[i]['pad_shape'][:2])
+            cur_acid_proposal_offsets = torch.cat([cur_acid_proposal_offsets, cur_acid_proposal_offsets], dim = 1)
+            draw_offset_info[i]['acid_proposals_offseted'] = draw_offset_info[i]['acid_proposals'] + cur_acid_proposal_offsets
+
+            cur_iodine_inds = iodine_rois[:, 0] == i
+            cur_iodine_pos_num = len(iodine_sampling_results[i].pos_bboxes)
+            cur_iodine_proposal_offsets = bbox_results['iodine_proposal_offsets'][cur_iodine_inds][:cur_iodine_pos_num]
+            cur_iodine_proposal_offsets = cur_iodine_proposal_offsets * cur_iodine_proposal_offsets.new_tensor(
+                img_metas[i]['pad_shape'][:2])
+            cur_iodine_proposal_offsets = torch.cat([cur_iodine_proposal_offsets, cur_iodine_proposal_offsets], dim = 1)
+            draw_offset_info[i]['iodine_proposals_offseted'] = draw_offset_info[i]['iodine_proposals'] + cur_iodine_proposal_offsets
+
+            for k in draw_offset_info[i]:
+                if isinstance(draw_offset_info[i][k], torch.Tensor):
+                    draw_offset_info[i][k] = draw_offset_info[i][k].cpu().detach().numpy()
+            draw_offset_info[i]['img_meta'] = img_metas[i]
+
+            file_name = os.path.splitext(img_metas[i]["filename"][0])[0]
+            path = f'/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_1x_dual_zEPyVcfph/results/{file_name}.pkl'
+            pickle.dump(draw_offset_info[i], open(path, 'wb'))
+
         loss_bbox = self.bbox_head.loss(bbox_results['acid_cls_score'], bbox_results['iodine_cls_score'],
                                         bbox_results['acid_bbox_pred'], bbox_results['iodine_bbox_pred'],
                                         bbox_results['acid_proposal_offsets'], bbox_results['iodine_proposal_offsets'],
                                         acid_rois, iodine_rois,
-                                        *bbox_targets)
+                                        *bbox_targets[:-1])
 
         bbox_results.update(loss_bbox = loss_bbox)
         return bbox_results

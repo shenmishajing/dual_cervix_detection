@@ -10,7 +10,7 @@ train_pipeline = [
     dict(type = 'LoadDualCervixImageFromFile'),  # ! 同时加载醋酸和碘图像
     dict(type = 'LoadDualCervixAnnotations', with_bbox = True),  # ! 同时加载醋酸的框和碘的框
     dict(type = 'Resize', img_scale = (1333, 800), keep_ratio = True),
-    dict(type = 'RandomFlip', flip_ratio = 0.5),
+    dict(type = 'RandomFlip', flip_ratio = 0.0),
     dict(type = 'DualCervixNormalize', **img_norm_cfg),  # ! 分别标准化，根据各自的均值和标准差
     dict(type = 'Pad', size_divisor = 32),
     dict(type = 'DualCervixDefaultFormatBundle'),  # ! 格式标准化
