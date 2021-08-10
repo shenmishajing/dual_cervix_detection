@@ -6,10 +6,8 @@ _base_ = [
 
 # model settings
 model = dict(
-    prim = 'iodine',
-    roi_head = dict(
-        enlarge = 0,
-        bbox_head = dict(num_classes = 1)))
+    prim = 'acid',
+    roi_head = dict(bbox_head = dict(num_classes = 1)))
 
 log_config = dict(
     interval = 50,
@@ -18,5 +16,5 @@ log_config = dict(
         dict(type = 'WandbLoggerHook',
              with_step = False,
              init_kwargs = dict(project = 'dual_cervix_detection',
-                                name = 'faster_rcnn_dual_r50_fpn_2x_iodine',
-                                tags = ['mmdetection', 'faster_rcnn_dual', 'r50', 'fpn', '2x', 'iodine']))])
+                                name = 'faster_rcnn_dual_r50_fpn_2x_acid',
+                                tags = ['mmdetection', 'faster_rcnn_dual', 'r50', 'fpn', '2x', 'acid']))])

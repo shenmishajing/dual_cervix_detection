@@ -7,7 +7,9 @@ _base_ = [
 # model settings
 model = dict(
     prim = 'acid',
-    roi_head = dict(bbox_head = dict(num_classes = 1)))
+    roi_head = dict(
+        enlarge = 0,
+        bbox_head = dict(num_classes = 1)))
 
 load_from = './work_dirs/faster_rcnn_dual_r50_fpn_1x_dual_zEPyVcfph/latest.pth'
 
