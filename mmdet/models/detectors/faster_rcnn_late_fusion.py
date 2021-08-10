@@ -9,9 +9,10 @@ from .two_stage import TwoStageDetector
 class FasterRCNNLateFusion(TwoStageDetector):
     """Implementation of `Faster R-CNN <https://arxiv.org/abs/1506.01497>`_"""
 
-    def __init__(self, prim = None, iou_threshold = 0.2, *args, **kwargs):
+    def __init__(self, prim = None, iou_threshold = 0.2, score_threshold = 0.8, *args, **kwargs):
         super(FasterRCNNLateFusion, self).__init__(*args, **kwargs)
         self.iou_threshold = iou_threshold
+        self.score_threshold = score_threshold
         if prim is None:
             self.prim = ['acid', 'iodine']
         elif not isinstance(prim, list):
@@ -127,7 +128,9 @@ class FasterRCNNLateFusion(TwoStageDetector):
             cur_acid_res, cur_iodine_res = [], []
             for c in range(len(acid_results[i])):
                 cur_acid_bboxes = acid_results[i][c]
+                cur_acid_bboxes = cur_acid_bboxes[cur_acid_bboxes[..., -1] > self.score_threshold]
                 cur_iodine_bboxes = iodine_results[i][c]
+                cur_iodine_bboxes = cur_iodine_bboxes[cur_iodine_bboxes[..., -1] > self.score_threshold]
                 iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
                 cur_acid_inds = np.max(iou, axis = 1) > self.iou_threshold
                 cur_acid_res.append(cur_acid_bboxes[cur_acid_inds])

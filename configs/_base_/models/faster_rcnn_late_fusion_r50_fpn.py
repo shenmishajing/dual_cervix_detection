@@ -2,6 +2,8 @@
 model = dict(
     type = 'FasterRCNNLateFusion',
     prim = None,  # acid, iodine or None
+    iou_threshold = 0.2,
+    score_threshold = 0.8,
     backbone = dict(
         type = 'ResNet',
         depth = 50,
