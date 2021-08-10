@@ -13,10 +13,6 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
         self.iou_threshold = iou_threshold
         self.score_threshold = score_threshold
 
-    def extract_feat(self, acid_img, iodine_img):
-        """Directly extract features from the backbone+neck."""
-        return super(FasterRCNNLateFusion, self).extract_feat(acid_img), super(FasterRCNNLateFusion, self).extract_feat(iodine_img)
-
     def forward_train(self,
                       acid_img, iodine_img,
                       img_metas,
