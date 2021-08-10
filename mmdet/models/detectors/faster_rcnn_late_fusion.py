@@ -131,11 +131,15 @@ class FasterRCNNLateFusion(TwoStageDetector):
                 cur_acid_bboxes = cur_acid_bboxes[cur_acid_bboxes[..., -1] > self.score_threshold]
                 cur_iodine_bboxes = iodine_results[i][c]
                 cur_iodine_bboxes = cur_iodine_bboxes[cur_iodine_bboxes[..., -1] > self.score_threshold]
-                iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
-                cur_acid_inds = np.max(iou, axis = 1) > self.iou_threshold
-                cur_acid_res.append(cur_acid_bboxes[cur_acid_inds])
-                cur_iodine_inds = np.max(iou, axis = 0) > self.iou_threshold
-                cur_iodine_res.append(cur_iodine_bboxes[cur_iodine_inds])
+                if cur_acid_bboxes.shape[0] > 0 and cur_iodine_bboxes.shape[0] > 0:
+                    iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
+                    cur_acid_inds = np.max(iou, axis = 1) > self.iou_threshold
+                    cur_acid_res.append(cur_acid_bboxes[cur_acid_inds])
+                    cur_iodine_inds = np.max(iou, axis = 0) > self.iou_threshold
+                    cur_iodine_res.append(cur_iodine_bboxes[cur_iodine_inds])
+                else:
+                    cur_acid_res.append(cur_acid_bboxes[0:0])
+                    cur_iodine_res.append(cur_iodine_bboxes[0:0])
             acid_res.append(cur_acid_res)
             iodine_res.append(cur_iodine_res)
         return acid_res, iodine_res
