@@ -32,6 +32,7 @@ from .single_stage import SingleStageDetector
 from .sparse_rcnn import SparseRCNN
 from .trident_faster_rcnn import TridentFasterRCNN
 from .two_stage import TwoStageDetector
+from .two_stage_cervix import TwoStageCervixDetector
 from .vfnet import VFNet
 from .yolact import YOLACT
 from .yolo import YOLOV3
@@ -40,7 +41,7 @@ from .sparse_reppoints_detector import SparseRepPointsDetector
 from .dual_cervix_faster import FasterPrimAuxDetector, FasterPrimAuxAuxOffsetLossDualDetector
 
 __all__ = [
-    'ATSS', 'ATSSDual', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
+    'ATSS', 'ATSSDual', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'TwoStageCervixDetector', 'RPN',
     'KnowledgeDistillationSingleStageDetector', 'FastRCNN', 'FasterRCNN',
     'MaskRCNN', 'CascadeRCNN', 'HybridTaskCascade', 'RetinaNet', 'FCOS',
     'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector', 'FOVEA', 'FSAF',
