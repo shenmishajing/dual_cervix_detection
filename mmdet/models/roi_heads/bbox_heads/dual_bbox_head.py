@@ -86,8 +86,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_label_weights = acid_pos_bboxes.new_zeros(acid_num_samples)
         acid_bbox_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
         acid_bbox_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
-        acid_offset_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 2)
-        acid_offset_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 2)
+        acid_offset_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
+        acid_offset_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
         if acid_num_pos > 0:
             acid_labels[:acid_num_pos] = acid_pos_gt_labels
             acid_pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight
@@ -104,11 +104,14 @@ class DualBBoxHead(Shared2FCBBoxHead):
             acid_bbox_targets[:acid_num_pos, :] = acid_pos_bbox_targets
             acid_bbox_weights[:acid_num_pos, :] = 1
             for i in range(acid_num_pos):
-                acid_offset_target = torch.mean(iodine_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
-                acid_offset_target = acid_offset_target - acid_pos_bboxes[i, :]
+                acid_offset_target_ori = torch.mean(iodine_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
+                acid_offset_target = acid_offset_target_ori - acid_pos_bboxes[i, :]
                 acid_offset_target = (acid_offset_target[:2] + acid_offset_target[2:]) / 2
                 acid_offset_target = acid_offset_target / acid_offset_target.new_tensor(img_meta['pad_shape'][:2])
-                acid_offset_targets[i, :] = acid_offset_target
+                acid_offset_targets[i, :2] = acid_offset_target
+                acid_offset_targets[i, 2:] = torch.log(
+                    torch.stack([acid_offset_target_ori[2] - acid_offset_target_ori[0],acid_offset_target_ori[3] - acid_offset_target_ori[1]])/torch.stack(
+                                     [acid_pos_bboxes[i, 2] - acid_pos_bboxes[i, 0], acid_pos_bboxes[i, 3] - acid_pos_bboxes[i, 1]]))
             acid_offset_weights[:acid_num_pos, :] = 1
         if acid_num_neg > 0:
             acid_label_weights[-acid_num_neg:] = 1.0
@@ -125,8 +128,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
         iodine_label_weights = iodine_pos_bboxes.new_zeros(iodine_num_samples)
         iodine_bbox_targets = iodine_pos_bboxes.new_zeros(iodine_num_samples, 4)
         iodine_bbox_weights = iodine_pos_bboxes.new_zeros(iodine_num_samples, 4)
-        iodine_offset_targets = iodine_pos_bboxes.new_zeros(iodine_num_samples, 2)
-        iodine_offset_weights = iodine_pos_bboxes.new_zeros(iodine_num_samples, 2)
+        iodine_offset_targets = iodine_pos_bboxes.new_zeros(iodine_num_samples, 4)
+        iodine_offset_weights = iodine_pos_bboxes.new_zeros(iodine_num_samples, 4)
         if iodine_num_pos > 0:
             iodine_labels[:iodine_num_pos] = iodine_pos_gt_labels
             iodine_pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight
@@ -143,11 +146,13 @@ class DualBBoxHead(Shared2FCBBoxHead):
             iodine_bbox_targets[:iodine_num_pos, :] = iodine_pos_bbox_targets
             iodine_bbox_weights[:iodine_num_pos, :] = 1
             for i in range(iodine_num_pos):
-                iodine_offset_target = torch.mean(acid_gt_bboxes_sorted[iodine_gt_bboxes_inds == iodine_pos_assigned_gt_inds[i]], dim = 0)
-                iodine_offset_target = iodine_offset_target - iodine_pos_bboxes[i, :]
+                iodine_offset_target_ori = torch.mean(acid_gt_bboxes_sorted[iodine_gt_bboxes_inds == iodine_pos_assigned_gt_inds[i]], dim = 0)
+                iodine_offset_target = iodine_offset_target_ori - iodine_pos_bboxes[i, :]
                 iodine_offset_target = (iodine_offset_target[:2] + iodine_offset_target[2:]) / 2
                 iodine_offset_target = iodine_offset_target / iodine_offset_target.new_tensor(img_meta['pad_shape'][:2])
-                iodine_offset_targets[i, :] = iodine_offset_target
+                iodine_offset_targets[i, :2] = iodine_offset_target
+                iodine_offset_targets[i, 2:] = torch.log(torch.stack([iodine_offset_target_ori[2] - iodine_offset_target_ori[0],iodine_offset_target_ori[3] - iodine_offset_target_ori[1]]) / torch.stack(
+                                     [iodine_pos_bboxes[i, 2] - iodine_pos_bboxes[i, 0], iodine_pos_bboxes[i, 3] - iodine_pos_bboxes[i, 1]]))
             iodine_offset_weights[:iodine_num_pos, :] = 1
         if iodine_num_neg > 0:
             iodine_label_weights[-iodine_num_neg:] = 1.0
