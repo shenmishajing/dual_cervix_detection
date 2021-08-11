@@ -43,6 +43,38 @@ class DualRoIHead(StandardRoIHead):
             feats = m(feats)
         return feats
 
+
+    def bbox_rescaless(self, bboxes, scale_factor=[1.0,1.0]):
+        """Rescale bounding box w.r.t. scale_factor.
+
+        Args:
+            bboxes (Tensor): Shape (n, 4) for bboxes or (n, 5) for rois
+            scale_factor ((n, 4) tensor float list): rescale factor
+
+        Returns:
+            Tensor: Rescaled bboxes.
+        """
+        if bboxes.size(1) == 5:
+            bboxes_ = bboxes[:, 1:]
+            inds_ = bboxes[:, 0]
+        else:
+            bboxes_ = bboxes
+        cx = (bboxes_[:, 0] + bboxes_[:, 2]) * 0.5
+        cy = (bboxes_[:, 1] + bboxes_[:, 3]) * 0.5
+        w = bboxes_[:, 2] - bboxes_[:, 0]
+        h = bboxes_[:, 3] - bboxes_[:, 1]
+        w = w * scale_factor[:,0]
+        h = h * scale_factor[:,1]
+        x1 = cx - 0.5 * w
+        x2 = cx + 0.5 * w
+        y1 = cy - 0.5 * h
+        y2 = cy + 0.5 * h
+        if bboxes.size(1) == 5:
+            rescaled_bboxes = torch.stack([inds_, x1, y1, x2, y2], dim=-1)
+        else:
+            rescaled_bboxes = torch.stack([x1, y1, x2, y2], dim=-1)
+        return rescaled_bboxes
+
     def forward_train(self,
                       acid_feats, iodine_feats,
                       img_metas,
