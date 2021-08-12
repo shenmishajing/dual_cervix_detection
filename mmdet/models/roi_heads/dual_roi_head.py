@@ -148,7 +148,7 @@ class DualRoIHead(StandardRoIHead):
         #     cur_rois = cur_rois + iodine_offsets_added[i]
         #     iodine_acid_rois.append(cur_rois)
         # iodine_acid_rois = torch.cat(iodine_acid_rois)
-        iodine_acid_rois = acid_rois.clone()
+        iodine_acid_rois = iodine_rois.clone()
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
         iodine_acid_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_acid_rois)
         iodine_proposal_offsets = self._offset_forward(torch.cat([iodine_bbox_feats, iodine_acid_bbox_feats], dim = 1), stage = 1)
