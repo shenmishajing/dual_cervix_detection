@@ -173,7 +173,7 @@ class DualRoIHead(StandardRoIHead):
 
         # iodine
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
-        iodine_acid_rois = acid_rois.clone()
+        iodine_acid_rois = iodine_rois.clone()
         if self.enlarge:
             iodine_acid_rois = torch.cat(
                 [iodine_acid_rois[:, 0, None], iodine_acid_rois[:, 1:3] - self.enlarge,
