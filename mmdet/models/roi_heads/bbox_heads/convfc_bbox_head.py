@@ -1,6 +1,8 @@
 import torch.nn as nn
 from mmcv.cnn import ConvModule
-
+import torch
+import os
+from torch.nn import functional as F
 from mmdet.models.builder import HEADS
 from mmdet.models.utils import build_linear_layer
 from .bbox_head import BBoxHead
@@ -58,6 +60,17 @@ class ConvFCBBoxHead(BBoxHead):
             self._add_conv_fc_branch(
                 self.num_shared_convs, self.num_shared_fcs, self.in_channels,
                 True)
+
+        # for self.fusion_modules_d
+        self.g = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.theta = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.phi = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.W = nn.Linear(self.fc_out_channels // 16, self.fc_out_channels)  #
+        self.g2 = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.theta2 = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.phi2 = nn.Linear(self.fc_out_channels, self.fc_out_channels // 16)  #
+        self.W2 = nn.Linear(self.fc_out_channels // 16, self.fc_out_channels)  #
+
         self.shared_out_channels = last_layer_dim
 
         # add cls specific branch
@@ -148,23 +161,68 @@ class ConvFCBBoxHead(BBoxHead):
             last_layer_dim = self.fc_out_channels
         return branch_convs, branch_fcs, last_layer_dim
 
+    def SelfAttentionBlock(self, x):
+        batch_size = x.size(0)
+        out_channels = x.size(1)
+
+        g_x = self.g(x).view(batch_size, out_channels // 16)
+
+        theta_x = self.theta(x).view(batch_size, out_channels // 16)
+        theta_x = theta_x.permute(1, 0)
+        phi_x = self.phi(x).view(batch_size, out_channels // 16)
+        f = torch.matmul(phi_x, theta_x)
+        f_div_C = F.softmax(f, dim=-1)
+
+        y = torch.matmul(f_div_C, g_x)
+        y = y.view(batch_size, out_channels // 16)
+        W_y = self.W(y)
+        z = W_y + x
+        return z
+
+    def CrossAttentionBlock(self, x):
+        batch_size = x[0].size(0)
+        out_channels = x[0].size(1)
+
+        g_x = self.g2(x[0]).view(batch_size, out_channels // 16)
+
+        theta_x = self.theta2(x[1]).view(batch_size, out_channels // 16)
+        theta_x = theta_x.permute(1,0)
+        phi_x = self.phi2(x[1]).view(batch_size, out_channels // 16)
+        f = torch.matmul(phi_x, theta_x)
+        f_div_C = F.softmax(f, dim=-1)
+
+        y = torch.matmul(f_div_C, g_x)
+        y = y.view(batch_size, out_channels // 16)
+        W_y = self.W2(y)
+        z = W_y + x[0]
+        return z
+
     def forward(self, x):
         # shared part
         if self.num_shared_convs > 0:
             for conv in self.shared_convs:
-                x = conv(x)
+                x[0] = conv(x[0])
+                x[1] = conv(x[1])
 
         if self.num_shared_fcs > 0:
             if self.with_avg_pool:
-                x = self.avg_pool(x)
+                x[0] = self.avg_pool(x[0])
+                x[1] = self.avg_pool(x[1])
 
-            x = x.flatten(1)
+            prim_feats = x[0].flatten(1)
+            aux_feats = x[1].flatten(1)
 
             for fc in self.shared_fcs:
-                x = self.relu(fc(x))
+                radar_x = self.relu(fc(prim_feats))
+                lidar_x = self.relu(fc(aux_feats))
+                radar_x = self.SelfAttentionBlock(radar_x)
+                lidar_x = self.SelfAttentionBlock(lidar_x)
+                prim_feats = self.CrossAttentionBlock([radar_x, lidar_x])
+                aux_feats = self.CrossAttentionBlock([lidar_x, radar_x])
+
         # separate branches
-        x_cls = x
-        x_reg = x
+        x_cls = prim_feats
+        x_reg = prim_feats
 
         for conv in self.cls_convs:
             x_cls = conv(x_cls)

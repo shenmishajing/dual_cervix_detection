@@ -136,7 +136,7 @@ class DualRoIHead(StandardRoIHead):
              acid_proposal_offsets_scaled], dim = 1)
         acid_iodine_rois = acid_rois + acid_proposal_offsets_added
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
-        acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
+        #acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
 
         # iodine
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
@@ -157,12 +157,13 @@ class DualRoIHead(StandardRoIHead):
              iodine_proposal_offsets_scaled], dim = 1)
         iodine_acid_rois = iodine_rois + iodine_proposal_offsets_added
         iodine_acid_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_acid_rois)
-        iodine_bbox_feats = self.fusion_feature(iodine_bbox_feats, iodine_acid_bbox_feats)
+        #iodine_bbox_feats = self.fusion_feature(iodine_bbox_feats, iodine_acid_bbox_feats)
 
         if self.with_shared_head:
             acid_bbox_feats = self.shared_head(acid_bbox_feats)
             iodine_bbox_feats = self.shared_head(iodine_bbox_feats)
-        acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred = self.bbox_head(acid_bbox_feats, iodine_bbox_feats)
+        acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred = self.bbox_head(acid_bbox_feats, acid_iodine_bbox_feats,
+                                                                                            iodine_bbox_feats,iodine_acid_bbox_feats)
 
         bbox_results = dict(acid_cls_score = acid_cls_score, acid_bbox_pred = acid_bbox_pred, acid_bbox_feats = acid_bbox_feats,
                             acid_proposal_offsets = acid_proposal_offsets,
