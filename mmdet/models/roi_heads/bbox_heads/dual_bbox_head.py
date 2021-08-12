@@ -23,9 +23,9 @@ class DualBBoxHead(Shared2FCBBoxHead):
         super(DualBBoxHead, self).__init__(*args, **kwargs)
         self.loss_offset = build_loss(loss_offset)
 
-    def forward(self, acid_bbox_feats, acid_iodine_bbox_feats,iodine_bbox_feats,iodine_acid_bbox_feats):
-        acid_cls_score, acid_bbox_pred = super(DualBBoxHead, self).forward([acid_bbox_feats, acid_iodine_bbox_feats])
-        iodine_cls_score, iodine_bbox_pred = super(DualBBoxHead, self).forward([iodine_bbox_feats,iodine_acid_bbox_feats])
+    def forward(self, acid_bbox_feats, acid_iodine_bbox_feats,acid_rois,acid_iodine_rois,iodine_bbox_feats,iodine_acid_bbox_feats,iodine_rois,iodine_acid_rois):
+        acid_cls_score, acid_bbox_pred = super(DualBBoxHead, self).forward([acid_bbox_feats, acid_iodine_bbox_feats,acid_rois,acid_iodine_rois])
+        iodine_cls_score, iodine_bbox_pred = super(DualBBoxHead, self).forward([iodine_bbox_feats,iodine_acid_bbox_feats,iodine_rois,iodine_acid_rois])
         return acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred
 
     def _get_target_single(self,

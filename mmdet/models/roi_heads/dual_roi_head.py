@@ -162,8 +162,8 @@ class DualRoIHead(StandardRoIHead):
         if self.with_shared_head:
             acid_bbox_feats = self.shared_head(acid_bbox_feats)
             iodine_bbox_feats = self.shared_head(iodine_bbox_feats)
-        acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred = self.bbox_head(acid_bbox_feats, acid_iodine_bbox_feats,
-                                                                                            iodine_bbox_feats,iodine_acid_bbox_feats)
+        acid_cls_score, iodine_cls_score, acid_bbox_pred, iodine_bbox_pred = self.bbox_head(acid_bbox_feats, acid_iodine_bbox_feats,acid_rois,acid_iodine_rois,
+                                                                                            iodine_bbox_feats,iodine_acid_bbox_feats,iodine_rois,iodine_acid_rois)
 
         bbox_results = dict(acid_cls_score = acid_cls_score, acid_bbox_pred = acid_bbox_pred, acid_bbox_feats = acid_bbox_feats,
                             acid_proposal_offsets = acid_proposal_offsets,
