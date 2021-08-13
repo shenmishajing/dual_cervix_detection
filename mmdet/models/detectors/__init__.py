@@ -12,6 +12,7 @@ from .faster_rcnn import FasterRCNN
 from .faster_rcnn_dual import FasterRCNNDual
 from .faster_rcnn_early_fusion import FasterRCNNEarlyFusion
 from .faster_rcnn_middle_fusion import FasterRCNNMiddleFusion
+from .faster_rcnn_middle_fusion_channel_attention import FasterRCNNMiddleFusionChannelAttention
 from .faster_rcnn_late_fusion import FasterRCNNLateFusion
 from .fcos import FCOS
 from .fovea import FOVEA
@@ -49,5 +50,5 @@ __all__ = [
     'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA', 'YOLOV3', 'YOLACT',
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SparseRepPointsDetector', 'SCNet',
     'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'FasterRCNNDual', 'FasterRCNNEarlyFusion', 'FasterRCNNMiddleFusion',
-    'FasterRCNNLateFusion', 'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector'
+    'FasterRCNNLateFusion', 'FasterRCNNMiddleFusionChannelAttention', 'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector'
 ]
