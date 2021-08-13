@@ -273,7 +273,7 @@ class ConvFCBBoxHead(BBoxHead):
                     feats_i = self.relation_module(
                         [torch.cat((prim_feats[i][None, ...], aux_feats[i][None, ...]), 0), position_embedding])
                     feats[i] = feats_i[0]
-                prim_feats = feats
+                prim_feats = feats.clone()
 
             # separate branches
         x_cls = prim_feats
