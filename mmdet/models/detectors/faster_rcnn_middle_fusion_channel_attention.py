@@ -58,13 +58,16 @@ class FasterRCNNMiddleFusionChannelAttention(TwoStageCervixDetector):
         self.fusion_module = nn.ModuleList([
             nn.ModuleList([
                 nn.Linear(self.neck[self.stages[0]].out_channels * 2 * pool_area, middle_channels),
+                nn.ReLU(),
+                nn.Linear(middle_channels, middle_channels),
+                nn.ReLU(),
                 nn.Linear(middle_channels, self.neck[self.stages[0]].out_channels * 2 * pool_area),
                 nn.Sigmoid()
             ])
             for _ in range(self.neck[self.stages[0]].num_outs)
         ])
         self.down_channel_module = nn.ModuleList([
-            nn.Conv2d(self.neck[self.stages[0]].out_channels * 2, self.neck[self.stages[0]].out_channels, 3, padding = 1)
+            nn.Conv2d(self.neck[self.stages[0]].out_channels * 2, self.neck[self.stages[0]].out_channels, 1)
             for _ in range(self.neck[self.stages[0]].num_outs)
         ])
 
