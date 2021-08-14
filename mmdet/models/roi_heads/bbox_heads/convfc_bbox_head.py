@@ -211,14 +211,21 @@ class ConvFCBBoxHead(BBoxHead):
 
             prim_feats = x[0].flatten(1)
             aux_feats = x[1].flatten(1)
+            #print('mean 0 :', torch.mean(prim_feats), torch.max(prim_feats), torch.min(prim_feats), prim_feats.size(),
+              #    aux_feats.size())
 
             for fc in self.shared_fcs:
                 radar_x = self.relu(fc(prim_feats))
                 lidar_x = self.relu(fc(aux_feats))
+                #print('size:',radar_x.size(),lidar_x.size())
                 radar_x = self.SelfAttentionBlock(radar_x)
                 lidar_x = self.SelfAttentionBlock(lidar_x)
+                #print('size d:', radar_x.size(), lidar_x.size())
                 prim_feats = self.CrossAttentionBlock([radar_x, lidar_x])
-                aux_feats = self.CrossAttentionBlock([lidar_x, radar_x])
+                #aux_feats = self.CrossAttentionBlock([lidar_x, radar_x])
+                aux_feats = lidar_x
+                #print('mean:', torch.mean(prim_feats), torch.max(prim_feats), torch.min(prim_feats), prim_feats.size(),
+                     # aux_feats.size())
 
         # separate branches
         x_cls = prim_feats
