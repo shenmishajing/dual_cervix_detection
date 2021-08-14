@@ -62,7 +62,7 @@ class ConvFCBBoxHead(BBoxHead):
                 True)
 
         # for self.fusion_modules_e
-        n_relations = 8
+        n_relations = 16
         appearance_feature_dim = 1024
         d_f = 128
         self.key_feature_dim = int(appearance_feature_dim / n_relations)
@@ -226,7 +226,7 @@ class ConvFCBBoxHead(BBoxHead):
 
         position_mat = torch.cat((delta_x, delta_y, delta_w, delta_h), -1)
 
-        feat_range = torch.arange(dim_g / 8).to("cuda:0")  #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        feat_range = torch.arange(dim_g / 8).to("cuda:3")  #torch.device("cuda" if torch.cuda.is_available() else "cpu")
         dim_mat = feat_range / (dim_g / 8)
         dim_mat = 1. / (torch.pow(wave_len, dim_mat))
 
@@ -234,7 +234,7 @@ class ConvFCBBoxHead(BBoxHead):
         position_mat = position_mat.view(size[0], size[1], 4, -1)
         position_mat = 100. * position_mat
 
-        mul_mat = position_mat.to("cuda:0") * dim_mat
+        mul_mat = position_mat.to("cuda:3") * dim_mat
         mul_mat = mul_mat.view(size[0], size[1], -1)
         sin_mat = torch.sin(mul_mat)
         cos_mat = torch.cos(mul_mat)
@@ -259,20 +259,20 @@ class ConvFCBBoxHead(BBoxHead):
             prim_roi = x[2]
             aux_roi = x[3]
 
+
             for fc in self.shared_fcs:
                 prim_feats = self.relu(fc(prim_feats))
                 aux_feats = self.relu(fc(aux_feats))
 
                 ### fusion e
                 feats = prim_feats.clone()
-                for i in range(prim_feats.size()[0]):
-                    # pool = pool.view(pool.size(0), -1)
-                    position_embedding = self.PositionalEmbedding(
-                        torch.cat((prim_roi[i][None, ...], aux_roi[i][None, ...]), 0)[:, 1:],
-                        dim_g=self.geo_feature_dim)
-                    feats_i = self.relation_module(
-                        [torch.cat((prim_feats[i][None, ...], aux_feats[i][None, ...]), 0), position_embedding])
-                    feats[i] = feats_i[0]
+                sizea = int(prim_feats.size()[0]/4)
+                for i in [0, sizea,int(sizea*2),int(sizea*3)]:
+
+                    position_embedding = self.PositionalEmbedding(torch.cat((prim_roi[i:i+sizea],aux_roi[i:i+sizea]),0)[:,1:], dim_g=self.geo_feature_dim)
+                    feats_i = self.relation_module([torch.cat((prim_feats[i:i+sizea],aux_feats[i:i+sizea]),0), position_embedding])
+                    feats[i:i+sizea] = feats_i[:int(feats_i.size()[0]/2)]
+
                 prim_feats = feats.clone()
 
             # separate branches
