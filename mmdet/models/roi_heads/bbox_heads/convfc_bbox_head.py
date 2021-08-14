@@ -223,7 +223,7 @@ class ConvFCBBoxHead(BBoxHead):
                 #print('size d:', radar_x.size(), lidar_x.size())
                 prim_feats = self.CrossAttentionBlock([radar_x, lidar_x])
                 #aux_feats = self.CrossAttentionBlock([lidar_x, radar_x])
-                aux_feats = lidar_x
+                aux_feats = lidar_x.clone()
                 #print('mean:', torch.mean(prim_feats), torch.max(prim_feats), torch.min(prim_feats), prim_feats.size(),
                      # aux_feats.size())
 
