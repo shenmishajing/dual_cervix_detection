@@ -28,13 +28,108 @@ class DualRoIHead(StandardRoIHead):
             nn.Sigmoid()
         ])
 
+        # self.fusion_modules_b = nn.ModuleList([
+        #     nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels,3,stride=1, padding=1),
+        #     nn.ReLU()
+        # ])
+
+        # fusion c
+        # self.fusion_modules_c = nn.ModuleList([
+        #     nn.Conv2d(2, 2, 1, stride=1),
+        #     nn.ReLU()
+        # ])
+
+        # #fusion cb
+        # self.fusion_modules_cb1 = nn.Conv2d(2, 2, 1, stride=1)
+        # self.fusion_modules_cb2 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
+
+
+        # #fusion f
+        # self.fusion_modules_f = nn.ModuleList([
+        #     nn.Linear(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
+        #     nn.ReLU(),
+        #     nn.Linear(self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
+        #     nn.ReLU(),
+        #     nn.Linear(self.bbox_head.conv_out_channels, 2 *self.bbox_head.conv_out_channels),
+        #     nn.Sigmoid()
+        # ])
+        # self.fusion_conv_f = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
+
+        # fusion g
+        self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
+        self.fusion_relu = nn.ReLU()
+        self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
+        self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
+                                        stride=1, padding=1)
+
+
     def fusion_feature(self, prim_feats, aux_feats):
-        prim_rate_feats = prim_feats.flatten(1)
-        aux_rate_feats = aux_feats.flatten(1)
-        rate = torch.cat([prim_rate_feats, aux_rate_feats], dim = 1)
-        for m in self.fusion_modules:
-            rate = m(rate)
-        feats = prim_feats * rate[..., None, None] + aux_feats * (1 - rate[..., None, None])
+        # #fusion a
+        # prim_rate_feats = prim_feats.flatten(1)
+        # aux_rate_feats = aux_feats.flatten(1)
+        # rate = torch.cat([prim_rate_feats, aux_rate_feats], dim = 1)
+        # for m in self.fusion_modules:
+        #     rate = m(rate)
+        # feats = prim_feats * rate[..., None, None] + aux_feats * (1 - rate[..., None, None])
+        #
+
+        # # # fusion B
+        # feats = torch.cat([prim_feats, aux_feats], dim=1)
+        # for m in self.fusion_modules_b:
+        #     feats = m(feats)
+
+        # # # fusion C
+        #
+        # prim_maxp = nn.MaxPool2d(prim_feats.size()[-1])(prim_feats)
+        # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
+        # prim_pool = (prim_maxp+prim_avgp)
+        # aux_maxp = nn.MaxPool2d(aux_feats.size()[-1])(aux_feats)
+        # aux_avgp = nn.AvgPool2d(aux_feats.size()[-1])(aux_feats)
+        # aux_pool = (aux_maxp + aux_avgp)
+        # pool = torch.cat([prim_pool, aux_pool], dim=-1).permute([0, 3, 2, 1]).reshape((prim_pool.size()[0],-1,16,16))
+        # for m in self.fusion_modules_c:
+        #     pool = m(pool)
+        # weights=nn.Softmax(dim=1)(pool)
+        # feats = prim_feats*(weights[:,0,:,:].reshape((weights.size()[0],-1,1,1))) + aux_feats*(weights[:,1,:,:].reshape((weights.size()[0],-1,1,1)))
+
+        # # # fusion cb
+        # prim_maxp = nn.MaxPool2d(prim_feats.size()[-1])(prim_feats)
+        # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
+        # prim_pool = (prim_maxp+prim_avgp)
+        # aux_maxp = nn.MaxPool2d(aux_feats.size()[-1])(aux_feats)
+        # aux_avgp = nn.AvgPool2d(aux_feats.size()[-1])(aux_feats)
+        # aux_pool = (aux_maxp + aux_avgp)
+        # pool = torch.cat([prim_pool, aux_pool], dim=-1).permute([0, 3, 2, 1]).reshape((prim_pool.size()[0],-1,16,16))
+        # pool = self.fusion_modules_cb1(pool)
+        # weights=nn.Softmax(dim=1)(pool)
+        # weights = torch.cat((weights[:,0,:,:].reshape((weights.size()[0],-1,1,1)),weights[:,1,:,:].reshape((weights.size()[0],-1,1,1))),dim=1)
+        # feats = torch.cat([prim_feats, aux_feats], dim=1)*weights
+        # feats = self.fusion_modules_cb2(feats)
+
+
+
+        # #fusion F
+        # feats = torch.cat([prim_feats, aux_feats], dim=1)
+        # maxp = nn.MaxPool2d(feats.size()[-1])(feats)
+        # avgp = nn.AvgPool2d(feats.size()[-1])(feats)
+        # pool = (maxp + avgp).squeeze(-1).squeeze(-1)
+        # for m in self.fusion_modules_f:
+        #   pool = m(pool)
+        # feats = feats*(pool.unsqueeze(-1).unsqueeze(-1))
+        # feats = self.fusion_conv_f(feats)
+
+        # fusion G
+        prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
+        aux_avgp = nn.AvgPool2d(prim_feats.size()[-1])(aux_feats)
+        feats = torch.cat([prim_avgp, aux_avgp], dim=-1).permute([0, 3, 2, 1])
+        f1 = self.fusion_conv_g1(feats)
+        f1 = self.fusion_relu(f1)
+        f1 = self.fusion_conv_g2(f1)
+        weight = nn.Softmax(dim=1)(f1)
+        weight = torch.cat([weight[:, 0], weight[:, 1]], dim=-1)
+        feats = torch.cat([prim_feats, aux_feats], dim=1) * weight.permute([0, 2, 1])[..., None]
+        feats = self.fusion_conv_g4(feats)
+
         return feats
 
     def _offset_forward(self, feats):
