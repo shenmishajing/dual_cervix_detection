@@ -106,18 +106,20 @@ def main():
         cfg.work_dir = args.work_dir
     elif cfg.get('work_dir', None) is None:
         # use config filename as default work_dir if cfg.work_dir is None
-        work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0] + '_' + ''.join(
-            random.choices(string.ascii_letters + string.digits, k = 8)))
-        k = 8
-        count = 0
-        while osp.exists(work_dir):
-            work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0] + '_' + ''.join(
-                random.choices(string.ascii_letters + string.digits, k = random.randint(4, k))))
-            count += 1
-            if count >= 100:
-                count = 0
-                k *= 2
-        cfg.work_dir = work_dir
+        # work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0] + '_' + ''.join(
+        #     random.choices(string.ascii_letters + string.digits, k = 8)))
+        # k = 8
+        # count = 0
+        # while osp.exists(work_dir):
+        #     work_dir = osp.join('./work_dirs', osp.splitext(osp.basename(args.config))[0] + '_' + ''.join(
+        #         random.choices(string.ascii_letters + string.digits, k = random.randint(4, k))))
+        #     count += 1
+        #     if count >= 100:
+        #         count = 0
+        #         k *= 2
+        # cfg.work_dir = work_dir
+        cfg.work_dir = osp.join('./work_dirs',
+                                osp.splitext(osp.basename(args.config))[0])
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
     if args.debug_len is not None:
