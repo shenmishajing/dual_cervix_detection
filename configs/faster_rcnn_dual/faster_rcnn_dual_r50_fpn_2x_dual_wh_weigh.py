@@ -45,7 +45,7 @@ data = dict(
     samples_per_gpu = 2,
     workers_per_gpu = 2,
     train = dict(  # ! 閸忚渹缍嬮弻銉ф箙dataset闁劌鍨庨惃鍒rvix.py
-        prim = 'acid',
+        prim = 'acid',    #由于评估函数的设置，此处需要固定prim = 'acid',且模型最后预测出来的结果也应该的【醋酸，碘】
         acid_ann_file = data_root + 'hsil_rereannos/train_acid.json',
         iodine_ann_file = data_root + 'hsil_rereannos/train_iodine.json',
  ),
