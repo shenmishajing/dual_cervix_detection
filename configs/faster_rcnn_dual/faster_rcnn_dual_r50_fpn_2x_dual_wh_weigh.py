@@ -27,8 +27,9 @@ lr_config = dict(
     warmup_ratio=0.001,
     step=[16, 22])
 runner = dict(type='EpochBasedRunner', max_epochs=24)
-#!
-optimizer = dict(lr=0.0025)
+
+optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
+
 
 # yapf:disable
 log_config = dict(
