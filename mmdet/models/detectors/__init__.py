@@ -5,6 +5,7 @@ from .base import BaseDetector
 from .cascade_rcnn import CascadeRCNN
 from .centernet import CenterNet
 from .cornernet import CornerNet
+from .CMCNet import CMCNet
 from .deformable_detr import DeformableDETR
 from .detr import DETR
 from .fast_rcnn import FastRCNN
@@ -44,7 +45,7 @@ from .dual_cervix_faster import FasterPrimAuxDetector, FasterPrimAuxAuxOffsetLos
 
 __all__ = [
     'ATSS', 'ATSSDual', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'TwoStageCervixDetector', 'RPN',
-    'KnowledgeDistillationSingleStageDetector', 'FastRCNN', 'FasterRCNN',
+    'KnowledgeDistillationSingleStageDetector', 'FastRCNN', 'FasterRCNN', 'CMCNet',
     'MaskRCNN', 'CascadeRCNN', 'HybridTaskCascade', 'RetinaNet', 'FCOS',
     'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector', 'FOVEA', 'FSAF',
     'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA', 'YOLOV3', 'YOLACT',
