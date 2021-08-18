@@ -11,14 +11,58 @@ from .two_stage import TwoStageDetector
 class FasterRCNNDual(TwoStageDetector):
     """Implementation of `Faster R-CNN <https://arxiv.org/abs/1506.01497>`_"""
 
-    def __init__(self, prim = None, *args, **kwargs):
-        super(FasterRCNNDual, self).__init__(*args, **kwargs)
+    def __init__(self, backbone,prim = None,
+                 neck=None,
+                 rpn_head_acid=None,rpn_head_iodine=None,
+                 roi_head_acid=None,roi_head_iodine=None,
+                 train_cfg=None,
+                 test_cfg=None,
+                 pretrained=None,
+                 init_cfg=None):
+        super(FasterRCNNDual, self).__init__(init_cfg)
         if prim is None:
             self.prim = ['acid', 'iodine']
         elif not isinstance(prim, list):
             self.prim = [prim]
         else:
             self.prim = prim
+
+        if pretrained:
+            warnings.warn('DeprecationWarning: pretrained is deprecated, '
+                          'please use "init_cfg" instead')
+            backbone.pretrained = pretrained
+        self.backbone = build_backbone(backbone)
+
+        if neck is not None:
+            self.neck = build_neck(neck)
+
+        if rpn_head_acid is not None and rpn_head_iodine is not None:
+            rpn_train_cfg = train_cfg.rpn if train_cfg is not None else None
+            rpn_head_acid_ = rpn_head_acid.copy()
+            rpn_head_iodine_ = rpn_head_acid.copy()
+            rpn_head_acid_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            rpn_head_iodine_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            self.rpn_head_acid = build_head(rpn_head_acid_)
+            self.rpn_head_iodine = build_head(rpn_head_iodine_)
+
+        if roi_head_acid is not None and roi_head_iodine is not None:
+            # update train and test cfg here for now
+            # TODO: refactor assigner & sampler
+            rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
+            roi_head_acid.update(train_cfg=rcnn_train_cfg)
+            roi_head_acid.update(test_cfg=test_cfg.rcnn)
+            roi_head_acid.pretrained = pretrained
+            self.roi_head_acid = build_head(roi_head_acid)
+
+            roi_head_iodine.update(train_cfg=rcnn_train_cfg)
+            roi_head_iodine.update(test_cfg=test_cfg.rcnn)
+            roi_head_iodine.pretrained = pretrained
+            self.roi_head_iodine = build_head(roi_head_iodine)
+
+        self.train_cfg = train_cfg
+        self.test_cfg = test_cfg
+
+
 
     def extract_feat(self, acid_img, iodine_img):
         """Directly extract features from the backbone+neck."""
@@ -42,13 +86,13 @@ class FasterRCNNDual(TwoStageDetector):
         # RPN forward and loss
         if self.with_rpn:
             proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
-            acid_rpn_losses, acid_proposal_list = self.rpn_head.forward_train(
+            acid_rpn_losses, acid_proposal_list = self.rpn_head_acid.forward_train(
                 acid_feats, img_metas, acid_gt_bboxes, gt_labels = None, gt_bboxes_ignore = acid_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
             if 'acid' in self.prim:
                 for k, v in acid_rpn_losses.items():
                     losses['acid_' + k] = v
-            iodine_rpn_losses, iodine_proposal_list = self.rpn_head.forward_train(
+            iodine_rpn_losses, iodine_proposal_list = self.rpn_head_iodine.forward_train(
                 iodine_feats, img_metas, iodine_gt_bboxes, gt_labels = None, gt_bboxes_ignore = iodine_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
             if 'iodine' in self.prim:
@@ -58,10 +102,16 @@ class FasterRCNNDual(TwoStageDetector):
             acid_proposal_list = acid_proposals
             iodine_proposal_list = iodine_proposals
 
-        roi_losses = self.roi_head.forward_train(
-            acid_feats, iodine_feats, img_metas, acid_proposal_list, iodine_proposal_list, acid_gt_bboxes, iodine_gt_bboxes, acid_gt_labels,
+        roi_acid_losses = self.roi_head_acid.forward_train(
+            acid_feats, iodine_feats, img_metas, acid_proposal_list, acid_gt_bboxes, iodine_gt_bboxes, acid_gt_labels,
             iodine_gt_labels, acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None, **kwargs)
-        for k, v in roi_losses.items():
+        roi_iodine_losses = self.roi_head_iodine.forward_train(
+            iodine_feats, acid_feats, img_metas, iodine_proposal_list, iodine_gt_bboxes, acid_gt_bboxes, iodine_gt_labels,
+            acid_gt_labels, iodine_gt_bboxes_ignore=None, acid_gt_bboxes_ignore=None, **kwargs)
+        for k, v in roi_acid_losses.items():
+            if any([name in k for name in self.prim]):
+                losses[k] = v
+        for k, v in roi_iodine_losses.items():
             if any([name in k for name in self.prim]):
                 losses[k] = v
 
@@ -103,13 +153,16 @@ class FasterRCNNDual(TwoStageDetector):
         """Test without augmentation."""
         assert self.with_bbox, 'Bbox head must be implemented.'
         acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-        if acid_proposals is None:
-            acid_proposal_list = self.rpn_head.simple_test_rpn(acid_feats, img_metas)
+        if acid_proposals is not None:
+            acid_proposal_list = self.rpn_head_acid.simple_test_rpn(acid_feats, img_metas)
         else:
             acid_proposal_list = acid_proposals
-        if iodine_proposals is None:
-            iodine_proposal_list = self.rpn_head.simple_test_rpn(iodine_feats, img_metas)
+        if iodine_proposals is not None:   ##not none??????
+            iodine_proposal_list = self.rpn_head_iodine.simple_test_rpn(iodine_feats, img_metas)
         else:
             iodine_proposal_list = iodine_proposals
 
-        return self.roi_head.simple_test(acid_feats, iodine_feats, acid_proposal_list, iodine_proposal_list, img_metas, rescale = rescale)
+        roi_result_acid = self.roi_head_acid.simple_test(acid_feats, iodine_feats, acid_proposal_list, img_metas, rescale = rescale)
+        roi_result_iodine = self.roi_head_iodine.simple_test(iodine_feats, acid_feats, iodine_proposal_list, img_metas, rescale=rescale)
+
+        return (roi_result_acid,roi_result_iodine)
