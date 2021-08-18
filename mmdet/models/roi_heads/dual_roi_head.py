@@ -256,11 +256,11 @@ class DualRoIHead(StandardRoIHead):
         return feats
 
     def forward_train(self,
-                      acid_feats, iodine_feats,
-                      img_metas,
-                      acid_proposal_list,
-                      acid_gt_bboxes, iodine_gt_bboxes,
-                      acid_gt_labels, iodine_gt_labels,
+                      acid_feats=None, iodine_feats=None,
+                      img_metas=None,
+                      acid_proposal_list=None,
+                      acid_gt_bboxes=None, iodine_gt_bboxes=None,
+                      acid_gt_labels=None, iodine_gt_labels=None,
                       acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None,
                       **kwargs):
         """
@@ -367,9 +367,9 @@ class DualRoIHead(StandardRoIHead):
         return bbox_results
 
     def simple_test(self,
-                    acid_feats, iodine_feats,
-                    acid_proposal_list,
-                    img_metas,
+                    acid_feats=None, iodine_feats=None,
+                    acid_proposal_list=None,
+                    img_metas=None,
                     acid_proposals = None, iodine_proposals = None,
                     rescale = False):
         """Test without augmentation."""
