@@ -79,9 +79,12 @@ class DualRoIHead(StandardRoIHead):
         #                                 stride=1, padding=1)
 
 
-        # # fusion h
+        # # fusion h or h_b
         # self.fusion_conv_h1 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
+        # self.fusion_relu_h1 = nn.ReLU()
         # self.fusion_conv_h2 = nn.Conv2d(98, 49, 3, stride=1, padding=1)
+        # self.fusion_relu_h2 = nn.ReLU()
+        # self.fusion_conv_h3 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
 
 
         # fusion i
@@ -214,7 +217,24 @@ class DualRoIHead(StandardRoIHead):
         # feats = feats_c +feats_s
 
 
-        # fusion i
+        # # fusion h_b
+        # N = prim_feats.size()[0]
+        # feats_c = torch.cat([prim_feats, aux_feats], dim=1)
+        # feats_c = self.fusion_conv_h1(feats_c)
+        # feats_c = self.fusion_relu_h1(feats_c)
+        #
+        # feats_s = torch.cat([prim_feats.reshape((N,256,1,-1)), aux_feats.reshape((N,256,1,-1))], dim=-1).permute([0, 3, 2, 1])
+        # feats_s = self.fusion_conv_h2(feats_s)
+        # feats_s = self.fusion_relu_h2(feats_s)
+        # feats_s = feats_s.reshape((N,7,7,256)).permute([0, 3, 2, 1])
+        # feats = torch.cat([feats_c, feats_s], dim=1)
+        # feats = self.fusion_conv_h3(feats)
+
+
+
+
+
+        # #fusion i
         N = prim_feats.size()[0]
         feats_i_ori = torch.cat([prim_feats.reshape((N, 256,1,-1)), aux_feats.reshape((N, 256,1,-1))], dim=-1).permute([0, 3, 2, 1])
         feats_i = self.fusion_conv_i1(feats_i_ori)
