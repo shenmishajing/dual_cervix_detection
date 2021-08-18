@@ -449,8 +449,8 @@ class DualRoIHead(StandardRoIHead):
 
         if acid_rois.shape[0] == 0:
             # There is no proposal in the whole batch
-            return [acid_rois.new_zeros(0, 5)] * len(acid_proposals), [acid_rois.new_zeros((0,), dtype = torch.long)] * len(
-                acid_proposals), [iodine_rois.new_zeros(0, 5)] * len(iodine_proposals), [
+            return [acid_rois.new_zeros(0, 5)] * len(acid_proposals),[iodine_rois.new_zeros(0, 5)] * len(iodine_proposals),\
+                   [acid_rois.new_zeros((0,), dtype = torch.long)] * len(acid_proposals),  [
                        iodine_rois.new_zeros((0,), dtype = torch.long)] * len(iodine_proposals)
 
         bbox_results = self._bbox_forward(acid_feats, iodine_feats, acid_rois, iodine_rois, img_metas)
