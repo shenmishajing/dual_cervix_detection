@@ -79,7 +79,7 @@ class TwoStageCervixDetector(TwoStageDetector):
         if 'neck' in self.no_shared_modules:
             if self.stages[0] not in neck:
                 neck = {stage: neck for stage in self.stages}
-            self.neck = nn.ModuleDict({stage: build_neck(neck[stage]) for stage in self.stages})
+            neck = nn.ModuleDict({stage: build_neck(neck[stage]) for stage in self.stages})
         else:
             neck = build_neck(neck)
         return neck
@@ -94,7 +94,7 @@ class TwoStageCervixDetector(TwoStageDetector):
             else:
                 for stage in self.stages:
                     rpn_head_[stage].update(train_cfg = rpn_train_cfg, test_cfg = self.test_cfg.rpn)
-            self.rpn_head = nn.ModuleDict({stage: build_head(rpn_head_[stage]) for stage in self.stages})
+            rpn_head = nn.ModuleDict({stage: build_head(rpn_head_[stage]) for stage in self.stages})
         else:
             rpn_train_cfg = self.train_cfg.rpn if self.train_cfg is not None else None
             rpn_head_ = rpn_head.copy()
