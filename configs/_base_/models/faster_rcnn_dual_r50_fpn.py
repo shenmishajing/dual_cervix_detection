@@ -2,6 +2,7 @@
 model = dict(
     type = 'FasterRCNNDual',
     prim = None,  # acid, iodine or None
+    no_shared_modules = [],
     backbone = dict(
         type = 'ResNet',
         depth = 50,
