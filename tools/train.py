@@ -190,6 +190,7 @@ def main():
             CLASSES = datasets[0].CLASSES)
     for hook in cfg.log_config.hooks:
         if hook.type == 'WandbLoggerHook':
+            hook.init_kwargs.name = cfg.work_dir.split('/')[-1]
             hook.init_kwargs.config = copy.deepcopy(cfg)
             hook.init_kwargs.config.log_config.pop('hooks')
     # add an attribute for visualization convenience
