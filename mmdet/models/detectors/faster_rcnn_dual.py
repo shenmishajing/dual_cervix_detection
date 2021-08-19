@@ -13,7 +13,7 @@ class FasterRCNNDual(TwoStageDetector):
 
     def __init__(self, backbone,
                  neck=None,
-                 rpn_head_acid=None,rpn_head_iodine=None,
+                 rpn_head=None,
                  roi_head_acid=None,roi_head_iodine=None,
                  prim=None,
                  train_cfg=None,
@@ -38,15 +38,13 @@ class FasterRCNNDual(TwoStageDetector):
         if neck is not None:
             self.neck = build_neck(neck)
 
-        if rpn_head_acid is not None and rpn_head_iodine is not None:
+        if rpn_head is not None:
 
             rpn_train_cfg = train_cfg.rpn if train_cfg is not None else None
-            rpn_head_acid_ = rpn_head_acid.copy()
-            rpn_head_iodine_ = rpn_head_iodine.copy()
-            rpn_head_acid_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
-            rpn_head_iodine_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
-            self.rpn_head_acid = build_head(rpn_head_acid_)
-            self.rpn_head_iodine = build_head(rpn_head_iodine_)
+            rpn_head_ = rpn_head.copy()
+            rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            self.rpn_head = build_head(rpn_head_)
+
 
         if roi_head_acid is not None and roi_head_iodine is not None:
 
@@ -89,16 +87,16 @@ class FasterRCNNDual(TwoStageDetector):
         losses = dict()
 
         # RPN forward and loss
-        if self.rpn_head_acid:
+        if self.rpn_head:
 
             proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
-            acid_rpn_losses, acid_proposal_list = self.rpn_head_acid.forward_train(
+            acid_rpn_losses, acid_proposal_list = self.rpn_head.forward_train(
                 acid_feats, img_metas, acid_gt_bboxes, gt_labels = None, gt_bboxes_ignore = acid_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
             if 'acid' in self.prim:
                 for k, v in acid_rpn_losses.items():
                     losses['acid_' + k] = v
-            iodine_rpn_losses, iodine_proposal_list = self.rpn_head_iodine.forward_train(
+            iodine_rpn_losses, iodine_proposal_list = self.rpn_head.forward_train(
                 iodine_feats, img_metas, iodine_gt_bboxes, gt_labels = None, gt_bboxes_ignore = iodine_gt_bboxes_ignore,
                 proposal_cfg = proposal_cfg)
             if 'iodine' in self.prim:
@@ -162,11 +160,11 @@ class FasterRCNNDual(TwoStageDetector):
         assert self.roi_head_acid, 'Bbox head must be implemented.'
         acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
         if acid_proposals is None:
-            acid_proposal_list = self.rpn_head_acid.simple_test_rpn(acid_feats, img_metas)
+            acid_proposal_list = self.rpn_head.simple_test_rpn(acid_feats, img_metas)
         else:
             acid_proposal_list = acid_proposals
         if iodine_proposals is None:
-            iodine_proposal_list = self.rpn_head_iodine.simple_test_rpn(iodine_feats, img_metas)
+            iodine_proposal_list = self.rpn_head.simple_test_rpn(iodine_feats, img_metas)
         else:
             iodine_proposal_list = iodine_proposals
 
