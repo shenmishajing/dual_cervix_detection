@@ -55,12 +55,12 @@ class DualRoIHead(StandardRoIHead):
         # ])
         # self.fusion_conv_f = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
 
-        # # fusion g or g_b
-        # self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
-        # self.fusion_relu = nn.ReLU()
-        # self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
-        # self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
-        #                                 stride=1, padding=1)
+        # fusion g or g_b
+        self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
+        self.fusion_relu = nn.ReLU()
+        self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
+        self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
+                                        stride=1, padding=1)
 
         # # fusion g_c
         # self.fusion_conv_g1 = nn.Conv2d(2, 64, 3, stride=1, padding=1)
@@ -87,12 +87,12 @@ class DualRoIHead(StandardRoIHead):
         # self.fusion_conv_h3 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
 
 
-        # fusion i
-        self.fusion_conv_i1 = nn.Conv2d(98, 49, 3, stride=1, padding=1)
-        self.fusion_irelu1 = nn.ReLU()
-        self.fusion_conv_i2 = nn.Conv2d(49, 2, 3, stride=1, padding=1)
-        self.fusion_conv_i3 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
-
+        # # fusion i
+        # self.fusion_conv_i1 = nn.Conv2d(98, 49, 3, stride=1, padding=1)
+        # self.fusion_irelu1 = nn.ReLU()
+        # self.fusion_conv_i2 = nn.Conv2d(49, 2, 3, stride=1, padding=1)
+        # self.fusion_conv_i3 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
+        #
 
 
     def fusion_feature(self, prim_feats, aux_feats):
@@ -103,7 +103,7 @@ class DualRoIHead(StandardRoIHead):
         # for m in self.fusion_modules:
         #     rate = m(rate)
         # feats = prim_feats * rate[..., None, None] + aux_feats * (1 - rate[..., None, None])
-        #
+
 
         # # # fusion B
         # feats = torch.cat([prim_feats, aux_feats], dim=1)
@@ -150,17 +150,17 @@ class DualRoIHead(StandardRoIHead):
         # feats = feats*(pool.unsqueeze(-1).unsqueeze(-1))
         # feats = self.fusion_conv_f(feats)
 
-        # # fusion G
-        # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
-        # aux_avgp = nn.AvgPool2d(prim_feats.size()[-1])(aux_feats)
-        # feats = torch.cat([prim_avgp, aux_avgp], dim=-1).permute([0, 3, 2, 1])
-        # f1 = self.fusion_conv_g1(feats)
-        # f1 = self.fusion_relu(f1)
-        # f1 = self.fusion_conv_g2(f1)
-        # weight = nn.Softmax(dim=1)(f1)
-        # weight = torch.cat([weight[:, 0], weight[:, 1]], dim=-1)
-        # feats = torch.cat([prim_feats, aux_feats], dim=1) * weight.permute([0, 2, 1])[..., None]
-        # feats = self.fusion_conv_g4(feats)
+        # fusion G
+        prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
+        aux_avgp = nn.AvgPool2d(prim_feats.size()[-1])(aux_feats)
+        feats = torch.cat([prim_avgp, aux_avgp], dim=-1).permute([0, 3, 2, 1])
+        f1 = self.fusion_conv_g1(feats)
+        f1 = self.fusion_relu(f1)
+        f1 = self.fusion_conv_g2(f1)
+        weight = nn.Softmax(dim=1)(f1)
+        weight = torch.cat([weight[:, 0], weight[:, 1]], dim=-1)
+        feats = torch.cat([prim_feats, aux_feats], dim=1) * weight.permute([0, 2, 1])[..., None]
+        feats = self.fusion_conv_g4(feats)
 
         # # fusion G_b
         # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats) + nn.MaxPool2d(prim_feats.size()[-1])(prim_feats)
@@ -234,16 +234,16 @@ class DualRoIHead(StandardRoIHead):
 
 
 
-        # #fusion i
-        N = prim_feats.size()[0]
-        feats_i_ori = torch.cat([prim_feats.reshape((N, 256,1,-1)), aux_feats.reshape((N, 256,1,-1))], dim=-1).permute([0, 3, 2, 1])
-        feats_i = self.fusion_conv_i1(feats_i_ori)
-        feats_i = self.fusion_irelu1(feats_i)
-        feats_i = self.fusion_conv_i2(feats_i)
-        weight = nn.Softmax(dim=1)(feats_i)
-        feats = torch.cat([(feats_i_ori[:,:49].permute([0, 3, 2, 1])*weight[:, 0].permute([0, 2, 1])[..., None]).reshape((N, 256 , 7, 7)),
-                           (feats_i_ori[:,49:].permute([0, 3, 2, 1])*weight[:, 1].permute([0, 2, 1])[..., None]).reshape((N, 256, 7, 7))], dim=1)
-        feats = self.fusion_conv_i3(feats)
+        # # #fusion i
+        # N = prim_feats.size()[0]
+        # feats_i_ori = torch.cat([prim_feats.reshape((N, 256,1,-1)), aux_feats.reshape((N, 256,1,-1))], dim=-1).permute([0, 3, 2, 1])
+        # feats_i = self.fusion_conv_i1(feats_i_ori)
+        # feats_i = self.fusion_irelu1(feats_i)
+        # feats_i = self.fusion_conv_i2(feats_i)
+        # weight = nn.Softmax(dim=1)(feats_i)
+        # feats = torch.cat([(feats_i_ori[:,:49].permute([0, 3, 2, 1])*weight[:, 0].permute([0, 2, 1])[..., None]).reshape((N, 256 , 7, 7)),
+        #                    (feats_i_ori[:,49:].permute([0, 3, 2, 1])*weight[:, 1].permute([0, 2, 1])[..., None]).reshape((N, 256, 7, 7))], dim=1)
+        # feats = self.fusion_conv_i3(feats)
 
 
         return feats
@@ -349,6 +349,7 @@ class DualRoIHead(StandardRoIHead):
         acid_iodine_rois = acid_rois + acid_proposal_offsets_added
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
+        #acid_bbox_feats = acid_bbox_feats + acid_iodine_bbox_feats
 
         # iodine
         iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_rois)
@@ -370,6 +371,7 @@ class DualRoIHead(StandardRoIHead):
         iodine_acid_rois = iodine_rois + iodine_proposal_offsets_added
         iodine_acid_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], iodine_acid_rois)
         iodine_bbox_feats = self.fusion_feature(iodine_bbox_feats, iodine_acid_bbox_feats)
+        #iodine_bbox_feats = iodine_bbox_feats + iodine_acid_bbox_feats
 
         if self.with_shared_head:
             acid_bbox_feats = self.shared_head(acid_bbox_feats)
