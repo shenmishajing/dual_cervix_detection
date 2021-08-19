@@ -60,21 +60,32 @@ class TwoStageCervixDetector(TwoStageDetector):
     @property
     def with_shared_head(self):
         """bool: whether the detector has a shared head in the RoI Head"""
-        return hasattr(self, 'roi_head') and (isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[
-            self.stages[0]].with_shared_head or self.roi_head.with_shared_head)
+        if not hasattr(self, 'roi_head'):
+            return False
+        if isinstance(self.roi_head, nn.ModuleDict):
+            return any([self.roi_head[stage].with_shared_head for stage in self.stages])
+        else:
+            return self.roi_head.with_shared_head
 
     @property
     def with_bbox(self):
         """bool: whether the detector has a bbox head"""
-        return ((hasattr(self, 'roi_head') and (
-                isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[self.stages[0]].with_shared_head or self.roi_head.with_bbox))
-                or (hasattr(self, 'bbox_head') and self.bbox_head is not None))
+        if not hasattr(self, 'roi_head'):
+            return False
+        if isinstance(self.roi_head, nn.ModuleDict):
+            return any([self.roi_head[stage].with_bbox for stage in self.stages])
+        else:
+            return self.roi_head.with_bbox
 
     @property
     def with_mask(self):
         """bool: whether the detector has a mask head"""
-        return ((hasattr(self, 'roi_head') and (isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[
-            self.stages[0]].with_shared_head or self.roi_head.with_mask)) or (hasattr(self, 'mask_head') and self.mask_head is not None))
+        if not hasattr(self, 'roi_head'):
+            return False
+        if isinstance(self.roi_head, nn.ModuleDict):
+            return any([self.roi_head[stage].with_mask for stage in self.stages])
+        else:
+            return self.roi_head.with_mask
 
     def build_backbone(self, backbone):
         if self.pretrained:
