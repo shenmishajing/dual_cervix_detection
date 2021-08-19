@@ -2,6 +2,7 @@
 model = dict(
     type = 'FasterRCNNLateFusion',
     prim = None,  # acid, iodine or None
+    no_shared_modules = [],
     iou_threshold = 0.2,
     score_threshold = 0.8,
     backbone = dict(

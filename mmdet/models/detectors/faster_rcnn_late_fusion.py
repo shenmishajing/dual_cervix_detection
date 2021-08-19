@@ -13,67 +13,12 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
         self.iou_threshold = iou_threshold
         self.score_threshold = score_threshold
 
-    def forward_train(self,
-                      acid_img, iodine_img,
-                      img_metas,
-                      acid_gt_bboxes, iodine_gt_bboxes,
-                      acid_gt_labels, iodine_gt_labels,
-                      acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None,
-                      acid_proposals = None, iodine_proposals = None,
-                      **kwargs):
-        acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-
-        losses = dict()
-
-        # RPN forward and loss
-        if self.with_rpn:
-            proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
-            acid_rpn_losses, acid_proposal_list = self.rpn_head.forward_train(
-                acid_feats, img_metas, acid_gt_bboxes, gt_labels = None, gt_bboxes_ignore = acid_gt_bboxes_ignore,
-                proposal_cfg = proposal_cfg)
-            if 'acid' in self.prim:
-                for k, v in acid_rpn_losses.items():
-                    losses['acid_' + k] = v
-            iodine_rpn_losses, iodine_proposal_list = self.rpn_head.forward_train(
-                iodine_feats, img_metas, iodine_gt_bboxes, gt_labels = None, gt_bboxes_ignore = iodine_gt_bboxes_ignore,
-                proposal_cfg = proposal_cfg)
-            if 'iodine' in self.prim:
-                for k, v in iodine_rpn_losses.items():
-                    losses['iodine_' + k] = v
-        else:
-            acid_proposal_list = acid_proposals
-            iodine_proposal_list = iodine_proposals
-
-        acid_roi_losses = self.roi_head.forward_train(acid_feats, img_metas, acid_proposal_list, acid_gt_bboxes, acid_gt_labels,
-                                                      acid_gt_bboxes_ignore, **kwargs)
-        if 'acid' in self.prim:
-            for k, v in acid_roi_losses.items():
-                losses['acid_' + k] = v
-
-        iodine_roi_losses = self.roi_head.forward_train(iodine_feats, img_metas, iodine_proposal_list, iodine_gt_bboxes, iodine_gt_labels,
-                                                        iodine_gt_bboxes_ignore, **kwargs)
-        if 'iodine' in self.prim:
-            for k, v in iodine_roi_losses.items():
-                losses['iodine_' + k] = v
-
-        return losses
-
     def simple_test(self, acid_img, iodine_img, img_metas, acid_proposals = None, iodine_proposals = None, rescale = False):
         """Test without augmentation."""
         assert self.with_bbox, 'Bbox head must be implemented.'
         acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-        if acid_proposals is None:
-            acid_proposal_list = self.rpn_head.simple_test_rpn(acid_feats, img_metas)
-        else:
-            acid_proposal_list = acid_proposals
-        if iodine_proposals is None:
-            iodine_proposal_list = self.rpn_head.simple_test_rpn(iodine_feats, img_metas)
-        else:
-            iodine_proposal_list = iodine_proposals
-
-        acid_results = self.roi_head.simple_test(acid_feats, acid_proposal_list, img_metas, rescale = rescale)
-        iodine_results = self.roi_head.simple_test(iodine_feats, iodine_proposal_list, img_metas, rescale = rescale)
-
+        acid_proposal_list, iodine_proposal_list = self.rpn_test(acid_feats, iodine_feats, img_metas, acid_proposals, iodine_proposals)
+        acid_results, iodine_results = self.roi_test(acid_feats, iodine_feats, img_metas, acid_proposal_list, iodine_proposal_list, rescale)
         return self.fusion_results(acid_results, iodine_results)
 
     def fusion_results(self, acid_results, iodine_results):
