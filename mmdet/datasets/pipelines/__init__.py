@@ -11,11 +11,10 @@ from .loading import (LoadAnnotations, LoadImageFromFile, LoadImageFromWebcam,
                       LoadMosaicImageAndAnnotations,
                       LoadDualCervixImageFromFile, LoadDualCervixAnnotations)
 from .test_time_aug import MultiScaleFlipAug
-from .transforms import (Albu, CutOut, Expand, MinIoURandomCrop, Normalize,
-                         Pad, PhotoMetricDistortion, RandomCenterCropPad,
-                         RandomCrop, RandomFlip, Resize, SegRescale,
-                         MixUp,
-                         DualCervixNormalize)
+from .transforms import (Albu, CutOut, Expand, MinIoURandomCrop, MixUp, Mosaic,
+                         Normalize, Pad, PhotoMetricDistortion, RandomAffine,
+                         RandomCenterCropPad, RandomCrop, RandomFlip,
+                         RandomShift, Resize, SegRescale, DualCervixNormalize)
 
 __all__ = [
     'Compose', 'to_tensor', 'ToTensor', 'ImageToTensor', 'ToDataContainer',
@@ -26,8 +25,8 @@ __all__ = [
     'MinIoURandomCrop', 'Expand', 'PhotoMetricDistortion', 'Albu',
     'InstaBoost', 'RandomCenterCropPad', 'AutoAugment', 'CutOut', 'Shear',
     'Rotate', 'ColorTransform', 'EqualizeTransform', 'BrightnessTransform',
-    'ContrastTransform', 'Translate',
-    'MixUp', 'LoadMosaicImageAndAnnotations',
+    'ContrastTransform', 'Translate', 'RandomShift', 'Mosaic', 'MixUp',
+    'RandomAffine', 'LoadMosaicImageAndAnnotations',
     'LoadDualCervixImageFromFile', 'LoadDualCervixAnnotations', 'DualCervixNormalize',
     'DualCervixDefaultFormatBundle'
 ]

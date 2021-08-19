@@ -56,14 +56,3 @@ optimizer = dict(_delete_ = True, type = 'AdamW', lr = 0.0001, betas = (0.9, 0.9
                                                      'norm': dict(decay_mult = 0.)}))
 lr_config = dict(step = [8, 11])
 runner = dict(type = 'EpochBasedRunner', max_epochs = 12)
-
-log_config = dict(
-    interval = 50,
-    hooks = [
-        dict(type = 'TextLoggerHook'),
-        dict(type = 'WandbLoggerHook',
-             with_step = False,
-             init_kwargs = dict(project = 'dual_cervix_detection',
-                                name = 'faster_rcnn_swin_tiny_patch4_window7_mstrain_480-800_adamw_1x_iodine',
-                                tags = ['mmdetection', 'faster_rcnn', 'swin', 'tiny', 'patch4', 'window7', 'mstrain_480-800', 'adamw', '1x',
-                                        'iodine']))])
