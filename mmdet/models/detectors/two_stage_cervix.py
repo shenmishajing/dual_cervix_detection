@@ -146,13 +146,13 @@ class TwoStageCervixDetector(TwoStageDetector):
         return self._extract_feat(acid_img, 'acid'), self._extract_feat(iodine_img, 'iodine')
 
     def rpn_forward_train(self, stage = None, *args, **kwargs):
-        if 'rpn_head' in self.no_shared_modules:
+        if stage is not None and 'rpn_head' in self.no_shared_modules:
             return self.rpn_head[stage].forward_train(*args, **kwargs)
         else:
             return self.rpn_head.forward_train(*args, **kwargs)
 
     def rpn_forward_test(self, stage = None, *args, **kwargs):
-        if 'rpn_head' in self.no_shared_modules:
+        if stage is not None and 'rpn_head' in self.no_shared_modules:
             return self.rpn_head[stage].simple_test_rpn(*args, **kwargs)
         else:
             return self.rpn_head.simple_test_rpn(*args, **kwargs)
@@ -167,15 +167,15 @@ class TwoStageCervixDetector(TwoStageDetector):
         # RPN forward and loss
         if self.with_rpn:
             proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
-            acid_rpn_losses, acid_proposal_list = self.rpn_forward_train(acid_feats, img_metas, acid_gt_bboxes, gt_labels = None,
+            acid_rpn_losses, acid_proposal_list = self.rpn_forward_train('acid', acid_feats, img_metas, acid_gt_bboxes, gt_labels = None,
                                                                          gt_bboxes_ignore = acid_gt_bboxes_ignore,
-                                                                         proposal_cfg = proposal_cfg, stage = 'acid')
+                                                                         proposal_cfg = proposal_cfg)
             if 'acid' in self.prim:
                 for k, v in acid_rpn_losses.items():
                     losses['acid_' + k] = v
-            iodine_rpn_losses, iodine_proposal_list = self.rpn_forward_train(iodine_feats, img_metas, iodine_gt_bboxes, gt_labels = None,
-                                                                             gt_bboxes_ignore = iodine_gt_bboxes_ignore,
-                                                                             proposal_cfg = proposal_cfg, stage = 'iodine')
+            iodine_rpn_losses, iodine_proposal_list = self.rpn_forward_train('iodine', iodine_feats, img_metas, iodine_gt_bboxes,
+                                                                             gt_labels = None, gt_bboxes_ignore = iodine_gt_bboxes_ignore,
+                                                                             proposal_cfg = proposal_cfg)
             if 'iodine' in self.prim:
                 for k, v in iodine_rpn_losses.items():
                     losses['iodine_' + k] = v
@@ -186,23 +186,23 @@ class TwoStageCervixDetector(TwoStageDetector):
 
     def rpn_test(self, acid_feats, iodine_feats, img_metas, acid_proposals = None, iodine_proposals = None):
         if acid_proposals is None:
-            acid_proposal_list = self.rpn_forward_test(acid_feats, img_metas, stage = 'acid')
+            acid_proposal_list = self.rpn_forward_test('acid', acid_feats, img_metas)
         else:
             acid_proposal_list = acid_proposals
         if iodine_proposals is None:
-            iodine_proposal_list = self.rpn_forward_test(iodine_feats, img_metas, stage = 'iodine')
+            iodine_proposal_list = self.rpn_forward_test('iodine', iodine_feats, img_metas)
         else:
             iodine_proposal_list = iodine_proposals
         return acid_proposal_list, iodine_proposal_list
 
     def roi_forward_train(self, stage = None, *args, **kwargs):
-        if 'roi_head' in self.no_shared_modules:
+        if stage is not None and 'roi_head' in self.no_shared_modules:
             return self.roi_head[stage].forward_train(*args, **kwargs)
         else:
             return self.roi_head.forward_train(*args, **kwargs)
 
     def roi_forward_test(self, stage = None, *args, **kwargs):
-        if 'roi_head' in self.no_shared_modules:
+        if stage is not None and 'roi_head' in self.no_shared_modules:
             return self.roi_head[stage].simple_test(*args, **kwargs)
         else:
             return self.roi_head.simple_test(*args, **kwargs)
@@ -216,21 +216,21 @@ class TwoStageCervixDetector(TwoStageDetector):
                   acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None,
                   **kwargs):
 
-        acid_roi_losses = self.roi_forward_train(acid_feats, img_metas, acid_proposal_list, acid_gt_bboxes, acid_gt_labels,
-                                                 acid_gt_bboxes_ignore, stage = 'acid', **kwargs)
+        acid_roi_losses = self.roi_forward_train('acid', acid_feats, img_metas, acid_proposal_list, acid_gt_bboxes, acid_gt_labels,
+                                                 acid_gt_bboxes_ignore, **kwargs)
         if 'acid' in self.prim:
             for k, v in acid_roi_losses.items():
                 losses['acid_' + k] = v
 
-        iodine_roi_losses = self.roi_forward_train(iodine_feats, img_metas, iodine_proposal_list, iodine_gt_bboxes, iodine_gt_labels,
-                                                   iodine_gt_bboxes_ignore, stage = 'iodine', **kwargs)
+        iodine_roi_losses = self.roi_forward_train('iodine', iodine_feats, img_metas, iodine_proposal_list, iodine_gt_bboxes,
+                                                   iodine_gt_labels, iodine_gt_bboxes_ignore, **kwargs)
         if 'iodine' in self.prim:
             for k, v in iodine_roi_losses.items():
                 losses['iodine_' + k] = v
 
     def roi_test(self, acid_feats, iodine_feats, img_metas, acid_proposal_list, iodine_proposal_list, rescale = False):
-        acid_results = self.roi_forward_test(acid_feats, acid_proposal_list, img_metas, rescale = rescale, stage = 'acid')
-        iodine_results = self.roi_forward_test(iodine_feats, iodine_proposal_list, img_metas, rescale = rescale, stage = 'iodine')
+        acid_results = self.roi_forward_test('acid', acid_feats, acid_proposal_list, img_metas, rescale = rescale)
+        iodine_results = self.roi_forward_test('iodine', iodine_feats, iodine_proposal_list, img_metas, rescale = rescale)
         return acid_results, iodine_results
 
     def forward_dummy(self, acid_img, iodine_img):
