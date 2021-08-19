@@ -55,6 +55,27 @@ class TwoStageCervixDetector(TwoStageDetector):
         if roi_head is not None:
             self.roi_head = self.build_roi_head(roi_head)
 
+    # TODO: these properties need to be carefully handled
+    # for both single stage & two stage detectors
+    @property
+    def with_shared_head(self):
+        """bool: whether the detector has a shared head in the RoI Head"""
+        return hasattr(self, 'roi_head') and (isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[
+            self.stages[0]].with_shared_head or self.roi_head.with_shared_head)
+
+    @property
+    def with_bbox(self):
+        """bool: whether the detector has a bbox head"""
+        return ((hasattr(self, 'roi_head') and (
+                isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[self.stages[0]].with_shared_head or self.roi_head.with_bbox))
+                or (hasattr(self, 'bbox_head') and self.bbox_head is not None))
+
+    @property
+    def with_mask(self):
+        """bool: whether the detector has a mask head"""
+        return ((hasattr(self, 'roi_head') and (isinstance(self.roi_head, nn.ModuleDict) and self.roi_head[
+            self.stages[0]].with_shared_head or self.roi_head.with_mask)) or (hasattr(self, 'mask_head') and self.mask_head is not None))
+
     def build_backbone(self, backbone):
         if self.pretrained:
             warnings.warn('DeprecationWarning: self.pretrained is deprecated, '
