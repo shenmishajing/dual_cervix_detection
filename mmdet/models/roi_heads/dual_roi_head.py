@@ -103,7 +103,7 @@ class DualRoIHead(StandardRoIHead):
         # for m in self.fusion_modules:
         #     rate = m(rate)
         # feats = prim_feats * rate[..., None, None] + aux_feats * (1 - rate[..., None, None])
-        #
+
 
         # # # fusion B
         # feats = torch.cat([prim_feats, aux_feats], dim=1)
@@ -320,9 +320,9 @@ class DualRoIHead(StandardRoIHead):
         # acid
         acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
         acid_iodine_rois = acid_rois.clone()
-        if self.enlarge:
-            acid_iodine_rois = torch.cat(
-                [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
+        # if self.enlarge:
+        #     acid_iodine_rois = torch.cat(
+        #         [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim = 1))
         acid_proposal_offsets_scaled = []
@@ -335,6 +335,9 @@ class DualRoIHead(StandardRoIHead):
             [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1), acid_proposal_offsets_scaled,
              acid_proposal_offsets_scaled], dim = 1)
         acid_iodine_rois = acid_rois + acid_proposal_offsets_added
+        if self.enlarge:
+            acid_iodine_rois = torch.cat(
+                [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
 
