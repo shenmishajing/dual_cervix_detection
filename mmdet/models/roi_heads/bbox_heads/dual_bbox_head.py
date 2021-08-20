@@ -85,8 +85,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_label_weights = acid_pos_bboxes.new_zeros(acid_num_samples)
         acid_bbox_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
         acid_bbox_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
-        acid_offset_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 2)
-        acid_offset_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 2)
+        acid_offset_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 4) #2/4 for rescale
+        acid_offset_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 4) #2/4 for rescale
         if acid_num_pos > 0:
             acid_labels[:acid_num_pos] = acid_pos_gt_labels
             acid_pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight

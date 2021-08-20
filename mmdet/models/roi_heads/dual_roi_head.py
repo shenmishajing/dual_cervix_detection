@@ -3,6 +3,7 @@ import torch
 from torch import nn
 
 from mmdet.core import bbox2result, bbox2roi
+from mmdet.core.bbox.coder.delta_xywh_bbox_coder import delta2bbox
 from ..builder import HEADS, build_head, build_roi_extractor
 from .standard_roi_head import StandardRoIHead
 
@@ -21,7 +22,7 @@ class DualRoIHead(StandardRoIHead):
             nn.ReLU(),
             nn.Linear(self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
             nn.ReLU(),
-            nn.Linear(self.bbox_head.conv_out_channels, 2),
+            nn.Linear(self.bbox_head.conv_out_channels, 4), #rescale
         ])
         self.fusion_modules = nn.ModuleList([
             nn.Linear(2 * self.bbox_head.conv_out_channels * self.bbox_head.roi_feat_area, 1),
@@ -248,6 +249,26 @@ class DualRoIHead(StandardRoIHead):
 
         return feats
 
+    def bbox_rescaless(self, bboxes, scale_factor=None):
+        """Rescale bounding box w.r.t. scale_factor.
+
+        Args:
+            bboxes (Tensor): Shape (n, 4) for bboxes or (n, 5) for rois
+            scale_factor ((n, 4) tensor float list): rescale factor
+
+        Returns:
+            Tensor: Rescaled bboxes.
+        """
+        if scale_factor is None:
+            scale_factor = bboxes.new_zeros((bboxes.shape[0], 4))
+        else:
+            scale_factor = torch.cat([torch.zeros_like(scale_factor), scale_factor], dim=1)
+        if bboxes.size(1) == 5:
+            rescaled_bboxes = delta2bbox(bboxes[:, 1:], scale_factor)
+            return torch.cat([bboxes[:, 0, None], rescaled_bboxes], dim=1)
+        else:
+            return delta2bbox(bboxes, scale_factor)
+
 
     def _offset_forward(self, feats):
         feats = feats.flatten(1)
@@ -317,29 +338,66 @@ class DualRoIHead(StandardRoIHead):
 
     def _bbox_forward(self, acid_feats, iodine_feats, acid_rois, img_metas):
         """Box head forward function used in both training and testing."""
-        # acid
-        acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
-        acid_iodine_rois = acid_rois.clone()
+        # # acid no rescale
+        # acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
+        # acid_iodine_rois = acid_rois.clone()
         # if self.enlarge:
         #     acid_iodine_rois = torch.cat(
         #         [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
-        acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
-        acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim = 1))
-        acid_proposal_offsets_scaled = []
-        for i in range(len(img_metas)):
-            cur_offsets = acid_proposal_offsets[acid_rois[:, 0] == i]
-            cur_offsets = cur_offsets * cur_offsets.new_tensor(img_metas[i]['pad_shape'][:2])
-            acid_proposal_offsets_scaled.append(cur_offsets)
-        acid_proposal_offsets_scaled = torch.cat(acid_proposal_offsets_scaled)
-        acid_proposal_offsets_added = torch.cat(
-            [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1), acid_proposal_offsets_scaled,
-             acid_proposal_offsets_scaled], dim = 1)
-        acid_iodine_rois = acid_rois + acid_proposal_offsets_added
+        # acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
+        # acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim = 1))
+        # acid_proposal_offsets_scaled = []
+        # for i in range(len(img_metas)):
+        #     cur_offsets = acid_proposal_offsets[acid_rois[:, 0] == i]
+        #     cur_offsets = cur_offsets * cur_offsets.new_tensor(img_metas[i]['pad_shape'][:2])
+        #     acid_proposal_offsets_scaled.append(cur_offsets)
+        # acid_proposal_offsets_scaled = torch.cat(acid_proposal_offsets_scaled)
+        # acid_proposal_offsets_added = torch.cat(
+        #     [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1), acid_proposal_offsets_scaled,
+        #      acid_proposal_offsets_scaled], dim = 1)
+        # acid_iodine_rois = acid_rois + acid_proposal_offsets_added
+        #
+        # acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
+        # acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
+
+
+
+        # acid rescale
+        acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
+        acid_iodine_rois = acid_rois.clone()
         if self.enlarge:
             acid_iodine_rois = torch.cat(
-                [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim = 1)
+                [acid_iodine_rois[:, 0, None], acid_iodine_rois[:, 1:3] - self.enlarge, acid_iodine_rois[:, 3:] + self.enlarge], dim=1)
+        acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs],acid_iodine_rois)
+        acid_proposal_offsets = self._offset_forward(torch.cat([acid_bbox_feats, acid_iodine_bbox_feats], dim=1))
+        acid_proposal_offsets_scaled = []
+        acid_proposal_offsets_resc = []
+        for i in range(len(img_metas)):
+            cur_acid_roi_inds = acid_rois[:, 0] == i
+            cur_offsets_ori = acid_proposal_offsets[cur_acid_roi_inds]
+            cur_offsets = cur_offsets_ori[:, :2] * cur_offsets_ori.new_tensor(img_metas[i]['pad_shape'][:2])
+            acid_proposal_offsets_scaled.append(cur_offsets)
+
+            cur_acid_roi = acid_rois[cur_acid_roi_inds]
+            acid_proposal_offsets_resc.append(cur_offsets_ori[:, 2:] * torch.cat(
+                [cur_acid_roi[:, 3, None] - cur_acid_roi[:, 1, None],
+                 cur_acid_roi[:, 4, None] - cur_acid_roi[:, 2, None]], dim=1).log())
+
+        acid_proposal_offsets_scaled = torch.cat(acid_proposal_offsets_scaled)
+        acid_proposal_offsets_added = torch.cat(
+            [acid_proposal_offsets_scaled.new_zeros(acid_proposal_offsets_scaled.shape[0], 1),
+             acid_proposal_offsets_scaled,
+             acid_proposal_offsets_scaled], dim=1)
+        acid_iodine_rois = acid_rois + acid_proposal_offsets_added
+
+        acid_iodine_rois = self.bbox_rescaless(acid_iodine_rois, scale_factor=torch.cat(acid_proposal_offsets_resc))
         acid_iodine_bbox_feats = self.bbox_roi_extractor(iodine_feats[:self.bbox_roi_extractor.num_inputs], acid_iodine_rois)
         acid_bbox_feats = self.fusion_feature(acid_bbox_feats, acid_iodine_bbox_feats)
+
+
+
+
+
 
 
         if self.with_shared_head:
