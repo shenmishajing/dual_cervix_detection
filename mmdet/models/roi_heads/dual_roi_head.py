@@ -24,10 +24,10 @@ class DualRoIHead(StandardRoIHead):
             nn.ReLU(),
             nn.Linear(self.bbox_head.conv_out_channels, 2), #rescale
         ])
-        self.fusion_modules = nn.ModuleList([
-            nn.Linear(2 * self.bbox_head.conv_out_channels * self.bbox_head.roi_feat_area, 1),
-            nn.Sigmoid()
-        ])
+        # self.fusion_modules = nn.ModuleList([
+        #     nn.Linear(2 * self.bbox_head.conv_out_channels * self.bbox_head.roi_feat_area, 1),
+        #     nn.Sigmoid()
+        # ])
 
         # self.fusion_modules_b = nn.ModuleList([
         #     nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels,3,stride=1, padding=1),
@@ -45,7 +45,7 @@ class DualRoIHead(StandardRoIHead):
         # self.fusion_modules_cb2 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
 
 
-        # #fusion f
+        # # #fusion f
         # self.fusion_modules_f = nn.ModuleList([
         #     nn.Linear(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
         #     nn.ReLU(),

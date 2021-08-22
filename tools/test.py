@@ -3,7 +3,7 @@ import os
 import os.path as osp
 import time
 import warnings
-
+import pandas as pd
 import mmcv
 import torch
 from mmcv import Config, DictAction
@@ -231,6 +231,39 @@ def main():
             metric_dict = dict(config=args.config, metric=metric)
             if args.work_dir is not None and rank == 0:
                 mmcv.dump(metric_dict, json_file)
+
+
+
+
+
+
+            # added to test by hhp
+            dic_acid = ['AP_Top5_acid', 'AP50_Top5_acid', 'AP75_Top5_acid', 'AP_Top10_acid', 'AP50_Top10_acid',
+                        'AP75_Top10_acid', 'AR_Top5_acid', 'AR_Top10_acid',
+                        'FROC50_acid', 'Recall50_fp_rate0.125_acid', 'Recall50_fp_rate0.25_acid',
+                        'Recall50_fp_rate0.5_acid', 'Recall50_fp_rate1_acid',
+                        'Recall50_fp_rate2_acid', 'Recall50_fp_rate4_acid', 'Recall50_fp_rate8_acid',
+                        'iRecall75_Top1_acid', 'iRecall75_Top2_acid',
+                        'iRecall75_Top3_acid']
+            dic_iodine = ['AP_Top5_iodine', 'AP50_Top5_iodine', 'AP75_Top5_iodine', 'AP_Top10_iodine',
+                          'AP50_Top10_iodine', 'AP75_Top10_iodine', 'AR_Top5_iodine',
+                          'AR_Top10_iodine', 'FROC50_iodine', 'Recall50_fp_rate0.125_iodine',
+                          'Recall50_fp_rate0.25_iodine', 'Recall50_fp_rate0.5_iodine',
+                          'Recall50_fp_rate1_iodine',
+                          'Recall50_fp_rate2_iodine', 'Recall50_fp_rate4_iodine', 'Recall50_fp_rate8_iodine',
+                          'iRecall75_Top1_iodine', 'iRecall75_Top2_iodine',
+                          'iRecall75_Top3_iodine']
+            metric_acid = []
+            metric_iodine = []
+            import numpy as np
+            for kk in range(len(dic_acid)):
+                metric_acid.append(metric[dic_acid[kk]])
+                metric_iodine.append(metric[dic_iodine[kk]])
+            print('metric_acid:', metric_acid)
+            print('metric_iodine:', metric_iodine)
+            # main_ready_detail = pd.DataFrame([metric_acid, metric_iodine], columns=dic_acid)
+            main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
+            main_ready_detail.to_excel('./acid_iodine_result.xlsx')
 
 
 if __name__ == '__main__':

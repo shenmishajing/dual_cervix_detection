@@ -110,6 +110,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 acid_offset_target = acid_offset_target / acid_offset_target.new_tensor(img_meta['pad_shape'][:2])
                 acid_offset_targets[i, :] = acid_offset_target
 
+
                 # # have rescale wh
                 # acid_offset_target_ori = torch.mean(iodine_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim=0)
                 # acid_offset_target = acid_offset_target_ori - acid_pos_bboxes[i, :]
