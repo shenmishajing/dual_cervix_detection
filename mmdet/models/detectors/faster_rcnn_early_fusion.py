@@ -11,4 +11,5 @@ class FasterRCNNEarlyFusion(TwoStageCervixDetector):
     def extract_feat(self, acid_img, iodine_img):
         """Directly extract features from the backbone+neck."""
         feats = torch.cat([acid_img, iodine_img], dim = 1)
-        return self._extract_feat(feats)
+        feats = self._extract_feat(feats)
+        return feats, feats

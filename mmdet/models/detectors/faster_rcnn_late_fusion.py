@@ -13,13 +13,8 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
         self.iou_threshold = iou_threshold
         self.score_threshold = score_threshold
 
-    def simple_test(self, acid_img, iodine_img, img_metas, acid_proposals = None, iodine_proposals = None, rescale = False):
-        """Test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
-        acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-        acid_proposal_list, iodine_proposal_list = self.rpn_test(acid_feats, iodine_feats, img_metas, acid_proposals, iodine_proposals)
-        acid_results, iodine_results = self.roi_test(acid_feats, iodine_feats, img_metas, acid_proposal_list, iodine_proposal_list, rescale)
-        return self.fusion_results(acid_results, iodine_results)
+    def simple_test(self, *args, **kwargs):
+        return self.fusion_results(*super(FasterRCNNLateFusion, self).simple_test(*args, **kwargs))
 
     def fusion_results(self, acid_results, iodine_results):
         acid_res, iodine_res = [], []

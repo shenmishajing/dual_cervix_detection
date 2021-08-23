@@ -27,39 +27,8 @@ class FasterRCNNMiddleFusion(TwoStageCervixDetector):
             feats.append(feat)
         return feats
 
-    def forward_train(self,
-                      acid_img, iodine_img,
-                      img_metas,
-                      acid_gt_bboxes, iodine_gt_bboxes,
-                      acid_gt_labels, iodine_gt_labels,
-                      acid_gt_bboxes_ignore = None, iodine_gt_bboxes_ignore = None,
-                      acid_proposals = None, iodine_proposals = None,
-                      **kwargs):
-        acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
+    def extract_feat(self, acid_img, iodine_img):
+        """Directly extract features from the backbone+neck."""
+        acid_feats, iodine_feats = super(FasterRCNNMiddleFusion, self).extract_feat(acid_img, iodine_img)
         feats = self.feature_fusion(acid_feats, iodine_feats)
-
-        losses = dict()
-        acid_proposal_list, iodine_proposal_list = self.rpn_train(losses,
-                                                                  feats, feats,
-                                                                  img_metas,
-                                                                  acid_gt_bboxes, iodine_gt_bboxes,
-                                                                  acid_gt_bboxes_ignore, iodine_gt_bboxes_ignore,
-                                                                  acid_proposals, iodine_proposals)
-        self.roi_train(losses,
-                       feats, feats,
-                       img_metas,
-                       acid_gt_bboxes, iodine_gt_bboxes,
-                       acid_gt_labels, iodine_gt_labels,
-                       acid_proposal_list, iodine_proposal_list,
-                       acid_gt_bboxes_ignore, iodine_gt_bboxes_ignore,
-                       **kwargs)
-
-        return losses
-
-    def simple_test(self, acid_img, iodine_img, img_metas, acid_proposals = None, iodine_proposals = None, rescale = False):
-        """Test without augmentation."""
-        acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-        feats = self.feature_fusion(acid_feats, iodine_feats)
-        acid_proposal_list, iodine_proposal_list = self.rpn_test(feats, feats, img_metas, acid_proposals, iodine_proposals)
-        acid_results, iodine_results = self.roi_test(feats, feats, img_metas, acid_proposal_list, iodine_proposal_list, rescale)
-        return acid_results, iodine_results
+        return feats, feats
