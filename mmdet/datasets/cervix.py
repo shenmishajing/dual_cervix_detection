@@ -51,7 +51,7 @@ import matplotlib.pyplot as plt
 class CervixDataset(CocoDataset):
     # ! 单、双模态dataset都要用到相同的评价，所以写了这个父类来完成指标评价部分
 
-    def __init__(self, debug_len = None, *args, **kwargs):
+    def __init__(self, debug_len=None, *args, **kwargs):
         super(CervixDataset, self).__init__(*args, **kwargs)
         self.debug_len = debug_len
 
@@ -62,15 +62,15 @@ class CervixDataset(CocoDataset):
             return self.debug_len
 
     def convert_dets_format(self, dets):
-        """ 
+        """
             检测结果的格式：
-                img1_list = [arr_cls1, arr_cls2, ...], 
+                img1_list = [arr_cls1, arr_cls2, ...],
                     某个类别为空的arr = np.zeros((0, 5), float32)
                     不空的时候为 arr = np.([
                                             [xmin, ymin, xmax, ymax, score],
                                             [], ...])
                 dets = [img1_list, img2_list, ...]
-            
+
             目标格式：
                 {
                     cls1_ind: list[dict],
@@ -97,14 +97,14 @@ class CervixDataset(CocoDataset):
         return tf_dets
 
     def get_format_annos(self, data_infos):
-        """ 
+        """
             gts原本的格式：
                 COCO
                 self.data_infos[idx] = {
                     'file_name': '08274633_2016-05-11_2.jpg',
-                    'height': 600, 
-                    'width': 733, 
-                    'id': 6256, 
+                    'height': 600,
+                    'width': 733,
+                    'id': 6256,
                     'filename': '08274633_2016-05-11_2.jpg'
                 }
                 anno = self.get_ann_info(idx)
@@ -139,15 +139,18 @@ class CervixDataset(CocoDataset):
 
         return tf_annos
 
-    def evaluate_single(self, predictions, annos, suffix = ''):
+    def evaluate_single(self, predictions, annos, suffix=''):
         predictions = self.sort_predictions(predictions)
         K = len(self._class_names)  # class
         T = len(self._iou_threshs)  # iou thresh
         M = len(self._max_dets)  # max detection per image
+        F = len(self._fp_rates)  # fp rates to calculate recall
         aps = -np.ones((K, T, M))
         ars = -np.ones((K, T, M))
         frocs = -np.ones((K, T, M))
         rec_img_list = -np.ones((K, T, M))
+        recalls_fp_rates = -np.ones((K, T, M, F))
+
         for k_i, cls_name in enumerate(self._class_names):
             if k_i not in predictions:
                 continue
@@ -155,17 +158,20 @@ class CervixDataset(CocoDataset):
             gts = self.get_cls_gts(annos, k_i)
             for t_i, thresh in enumerate(self._iou_threshs):  # iou from 0.5 to 0.95, step 0.05
                 for m_i, max_det in enumerate(self._max_dets):
-                    max_rec, ap, froc, rec_img = self.eval(dts, gts, ovthresh = thresh / 100, max_det = max_det)
+                    max_rec, ap, froc, rec_img, recall_fp_rates = self.eval(dts, gts, ovthresh=thresh / 100,
+                                                                            max_det=max_det, fp_rates=self._fp_rates)
                     aps[k_i, t_i, m_i] = ap * 100
                     ars[k_i, t_i, m_i] = max_rec * 100
                     frocs[k_i, t_i, m_i] = froc * 100
                     rec_img_list[k_i, t_i, m_i] = rec_img * 100
+                    recalls_fp_rates[k_i, t_i, m_i, :] = [x * 100 for x in recall_fp_rates]
 
         self._result = {
             'aps' + suffix: aps,
             'ars' + suffix: ars,
             'frocs' + suffix: frocs,
-            'rec_img_list' + suffix: rec_img_list
+            'rec_img_list' + suffix: rec_img_list,
+            'recalls_fp_rates': recalls_fp_rates,
         }
 
         record = self.summarize(suffix)
@@ -173,7 +179,7 @@ class CervixDataset(CocoDataset):
         return record
 
     def summarize(self, suffix):
-        def _summarize(type, iou_t = None, max_det = 100):
+        def _summarize(type, iou_t=None, max_det=100, fp_rate=None):
             suffix_output_str = suffix if suffix == '' else f' {suffix[1:]}'  # '_acid' to ' acid'
             i_str = ' {:<25} @[ IoU={:<9} | maxDets={} ] = {:0.5f}'
             mind = [i for i, mdet in enumerate(self._max_dets) if mdet == max_det]
@@ -196,6 +202,10 @@ class CervixDataset(CocoDataset):
             elif type == 'irec':
                 title_str = 'Image Recall'
                 metric_res = np.mean(self._result['rec_img_list' + suffix][:, tind, mind])
+            elif type == 'recall_fp_rate':
+                title_str = 'rc_fp_rate{}'.format(fp_rate)
+                fp_rate_idx = [i for i, rate in enumerate(self._fp_rates) if rate == fp_rate]
+                metric_res = np.mean(self._result['recalls_fp_rates'][:, tind, mind, fp_rate_idx])
             else:
                 raise ValueError
             title_str += suffix_output_str
@@ -206,22 +216,31 @@ class CervixDataset(CocoDataset):
         ret = OrderedDict()
         # ap
         for max_det in self._max_dets:
-            ret[f'AP_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = None, max_det = max_det)
-            ret[f'AP50_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = 50, max_det = max_det)
-            ret[f'AP75_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = 75, max_det = max_det)
+            ret[f'AP_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=None, max_det=max_det)
+            ret[f'AP50_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=50, max_det=max_det)
+            ret[f'AP75_Top{max_det}' + suffix] = _summarize(type='ap', iou_t=75, max_det=max_det)
         # ar
         for max_det in self._max_dets:
-            ret[f'AR_Top{max_det}' + suffix] = _summarize(type = 'ar', iou_t = None, max_det = max_det)
+            ret[f'AR_Top{max_det}' + suffix] = _summarize(type='ar', iou_t=None, max_det=max_det)
         # froc
-        ret[f'FROC' + suffix] = _summarize(type = 'froc', iou_t = None, max_det = self._max_dets[-1])
-        ret[f'FROC50' + suffix] = _summarize(type = 'froc', iou_t = 50, max_det = self._max_dets[-1])
-        ret[f'FROC75' + suffix] = _summarize(type = 'froc', iou_t = 75, max_det = self._max_dets[-1])
+        ret[f'FROC' + suffix] = _summarize(type='froc', iou_t=None, max_det=self._max_dets[-1])
+        ret[f'FROC50' + suffix] = _summarize(type='froc', iou_t=50, max_det=self._max_dets[-1])
+        ret[f'FROC75' + suffix] = _summarize(type='froc', iou_t=75, max_det=self._max_dets[-1])
+
+        # recall on each fp rates
+        for fp_rate in self._fp_rates:
+            ret[f'Recall_fp_rate{fp_rate}' + suffix] = _summarize(type='recall_fp_rate', iou_t=None,
+                                                                  max_det=self._max_dets[-1], fp_rate=fp_rate)
+            ret[f'Recall50_fp_rate{fp_rate}' + suffix] = _summarize(type='recall_fp_rate', iou_t=50,
+                                                                    max_det=self._max_dets[-1], fp_rate=fp_rate)
+            ret[f'Recall75_fp_rate{fp_rate}' + suffix] = _summarize(type='recall_fp_rate', iou_t=75,
+                                                                    max_det=self._max_dets[-1], fp_rate=fp_rate)
 
         # image level recall
         for max_det in self._max_dets:
-            ret[f'iRecall_Top{max_det}' + suffix] = _summarize(type = 'irec', iou_t = None, max_det = max_det)
-            ret[f'iRecall50_Top{max_det}' + suffix] = _summarize(type = 'irec', iou_t = 50, max_det = max_det)
-            ret[f'iRecall75_Top{max_det}' + suffix] = _summarize(type = 'irec', iou_t = 75, max_det = max_det)
+            ret[f'iRecall_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=None, max_det=max_det)
+            ret[f'iRecall50_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=50, max_det=max_det)
+            ret[f'iRecall75_Top{max_det}' + suffix] = _summarize(type='irec', iou_t=75, max_det=max_det)
         # print(ret)
         return ret
 
@@ -260,7 +279,7 @@ class CervixDataset(CocoDataset):
         return {'gt_recs': gt_recs, 'npos': npos}
 
     @staticmethod
-    def eval(dts, gts, ovthresh = 0.5, max_det = np.inf):
+    def eval(dts, gts, ovthresh=0.5, max_det=np.inf, fp_rates=[]):
         """
         eval one class
         """
@@ -277,7 +296,7 @@ class CervixDataset(CocoDataset):
         max_det_count = defaultdict(int)
         nimg = len(gt_recs)
         img_m = np.zeros(nimg)  # calculate recall on image level, means patient level recall
-        fps_thresh = nimg * np.array([1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8])
+        fps_thresh = nimg * np.array(fp_rates)
         npos = gts['npos']
         tp = []  # true positive, for recall and precision
         fp = []  # false positive, for precision
@@ -340,11 +359,12 @@ class CervixDataset(CocoDataset):
         # find first idx where fp > fp_thresh, append sentinel values at the end
         fp = np.concatenate((fp, [np.inf]))
         fp_idx = [min((fp > x).nonzero()[0][0], len(fp) - 2) for x in fps_thresh]
-        froc = np.mean([rec[idx] for idx in fp_idx])
+        recall_fp_rates = [rec[idx] for idx in fp_idx]
+        froc = np.mean(recall_fp_rates)
         max_rec = rec.max()
         rec_img = np.sum(img_m) / len(img_m)
 
-        return max_rec, ap, froc, rec_img
+        return max_rec, ap, froc, rec_img, recall_fp_rates
 
     @staticmethod
     def voc_ap(rec, prec):
@@ -369,7 +389,7 @@ class CervixDataset(CocoDataset):
 
 @DATASETS.register_module()
 class DualCervixDataset(CervixDataset):
-    """ 
+    """
     最先好看看CocoDataset和CustomDataset，理解一下数据是怎么加载、处理的
     由acid_coco, iodine_coco构成数据集
     """
@@ -381,12 +401,12 @@ class DualCervixDataset(CervixDataset):
                  iodine_ann_file,
                  pipeline,
                  classes,
-                 data_root = None,
-                 img_prefix = '',
-                 proposal_file = None,
-                 test_mode = False,
-                 filter_empty_gt = True,
-                 debug_len = None):
+                 data_root=None,
+                 img_prefix='',
+                 proposal_file=None,
+                 test_mode=False,
+                 filter_empty_gt=True,
+                 debug_len=None):
         """
 
         Args:
@@ -451,7 +471,8 @@ class DualCervixDataset(CervixDataset):
 
         self._iou_threshs = list(range(50, 100, 5))
         self._max_dets = [1, 2, 3, 5, 10, 100]
-        self._class_names = self.get_classes(classes = classes)
+        self._fp_rates = [1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8]
+        self._class_names = self.get_classes(classes=classes)
 
     def load_annotations(self, acid_ann_file, iodine_ann_file):
         """Load annotation from COCO style annotation file.
@@ -466,7 +487,7 @@ class DualCervixDataset(CervixDataset):
         self.acid_coco = COCO(acid_ann_file)
         self.iodine_coco = COCO(iodine_ann_file)
 
-        self.cat_ids = self.acid_coco.get_cat_ids(cat_names = self.CLASSES)
+        self.cat_ids = self.acid_coco.get_cat_ids(cat_names=self.CLASSES)
         self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)}
         self.img_ids = self.acid_coco.get_img_ids()
         data_infos = []
@@ -488,18 +509,18 @@ class DualCervixDataset(CervixDataset):
         """
 
         img_id = self.data_infos[idx]['id']
-        acid_ann_ids = self.acid_coco.get_ann_ids(img_ids = [img_id])
+        acid_ann_ids = self.acid_coco.get_ann_ids(img_ids=[img_id])
         acid_ann_info = self.acid_coco.load_anns(acid_ann_ids)
         # print(acid_ann_info)
-        iodine_ann_ids = self.iodine_coco.get_ann_ids(img_ids = [img_id])
+        iodine_ann_ids = self.iodine_coco.get_ann_ids(img_ids=[img_id])
         iodine_ann_info = self.iodine_coco.load_anns(iodine_ann_ids)
         # print(iodine_ann_info)
         acid_ann = self._parse_ann_info(self.data_infos[idx], acid_ann_info)
         iodine_ann = self._parse_ann_info(self.data_infos[idx], iodine_ann_info)
 
         ann = dict(
-            bboxes = [acid_ann["bboxes"], iodine_ann["bboxes"]],
-            labels = [acid_ann["labels"], iodine_ann["labels"]])
+            bboxes=[acid_ann["bboxes"], iodine_ann["bboxes"]],
+            labels=[acid_ann["labels"], iodine_ann["labels"]])
 
         return ann
 
@@ -539,25 +560,25 @@ class DualCervixDataset(CervixDataset):
 
         box_idx = None
         if gt_bboxes:
-            gt_bboxes = np.array(gt_bboxes, dtype = np.float32)
-            gt_labels = np.array(gt_labels, dtype = np.int64)
+            gt_bboxes = np.array(gt_bboxes, dtype=np.float32)
+            gt_labels = np.array(gt_labels, dtype=np.int64)
 
             # ! 确保醋酸和碘的框的排列顺序是一致的（标注时，已经确定了对应关系，只要按左上角顶点的x坐标值进行排序，即可对应）
             box_idx = np.argsort(gt_bboxes[:, 0])
             gt_bboxes = gt_bboxes[box_idx]
             gt_labels = gt_labels[box_idx]
         else:
-            gt_bboxes = np.zeros((0, 4), dtype = np.float32)
-            gt_labels = np.array([], dtype = np.int64)
+            gt_bboxes = np.zeros((0, 4), dtype=np.float32)
+            gt_labels = np.array([], dtype=np.int64)
 
         if gt_bboxes_ignore:
-            gt_bboxes_ignore = np.array(gt_bboxes_ignore, dtype = np.float32)
+            gt_bboxes_ignore = np.array(gt_bboxes_ignore, dtype=np.float32)
         else:
-            gt_bboxes_ignore = np.zeros((0, 4), dtype = np.float32)
+            gt_bboxes_ignore = np.zeros((0, 4), dtype=np.float32)
 
         ann = dict(
-            bboxes = gt_bboxes,
-            labels = gt_labels)
+            bboxes=gt_bboxes,
+            labels=gt_labels)
 
         return ann
 
@@ -572,10 +593,10 @@ class DualCervixDataset(CervixDataset):
         """
 
         img_id = self.data_infos[idx]['id']
-        acid_ann_ids = self.acid_coco.get_ann_ids(img_ids = [img_id])
+        acid_ann_ids = self.acid_coco.get_ann_ids(img_ids=[img_id])
         acid_ann_info = self.acid_coco.load_anns(acid_ann_ids)
 
-        iodine_ann_ids = self.iodine_coco.get_ann_ids(img_ids = [img_id])
+        iodine_ann_ids = self.iodine_coco.get_ann_ids(img_ids=[img_id])
         iodine_ann_info = self.iodine_coco.load_anns(iodine_ann_ids)
 
         return [
@@ -583,7 +604,7 @@ class DualCervixDataset(CervixDataset):
             [ann['category_id'] for ann in iodine_ann_info]
         ]
 
-    def _filter_imgs(self, min_size = 32):
+    def _filter_imgs(self, min_size=32):
         """Filter images too small or without ground truths."""
         valid_inds = []
         # obtain images that contain annotation
@@ -686,7 +707,7 @@ class DualCervixDataset(CervixDataset):
             raise TypeError('invalid type of results')
         return result_files
 
-    def format_results(self, results, jsonfile_prefix = None, acid = True, **kwargs):
+    def format_results(self, results, jsonfile_prefix=None, acid=True, **kwargs):
         """Format the results to json (standard format for COCO evaluation).
 
         Args:
@@ -718,13 +739,13 @@ class DualCervixDataset(CervixDataset):
 
     def evaluate_coco(self,
                       results,
-                      metric = 'bbox',
-                      logger = None,
-                      jsonfile_prefix = None,
-                      classwise = False,
-                      proposal_nums = (100, 300, 1000),
-                      iou_thrs = None,
-                      metric_items = None):
+                      metric='bbox',
+                      logger=None,
+                      jsonfile_prefix=None,
+                      classwise=False,
+                      proposal_nums=(100, 300, 1000),
+                      iou_thrs=None,
+                      metric_items=None):
         """
         #! 双检测的结果[prim_result, aux_result, prim_result, aux_result, ....]
         #! coco 中的指标计算方法，搬过来，修改适应双模态的评估(COCO的评价指标)。这是最一开始的评价指标，已经不用了。
@@ -756,24 +777,24 @@ class DualCervixDataset(CervixDataset):
             iodine_results = prim_results
 
         acid_metric = self.evaluate_single_coco(acid_results,
-                                                acid = self.prim == "acid",
-                                                metric = metric,
-                                                logger = logger,
-                                                jsonfile_prefix = jsonfile_prefix,
-                                                classwise = classwise,
-                                                proposal_nums = proposal_nums,
-                                                iou_thrs = iou_thrs,
-                                                metric_items = metric_items)
+                                                acid=self.prim == "acid",
+                                                metric=metric,
+                                                logger=logger,
+                                                jsonfile_prefix=jsonfile_prefix,
+                                                classwise=classwise,
+                                                proposal_nums=proposal_nums,
+                                                iou_thrs=iou_thrs,
+                                                metric_items=metric_items)
 
         iodine_metric = self.evaluate_single_coco(iodine_results,
-                                                  acid = self.prim != "acid",
-                                                  metric = metric,
-                                                  logger = logger,
-                                                  jsonfile_prefix = jsonfile_prefix,
-                                                  classwise = classwise,
-                                                  proposal_nums = proposal_nums,
-                                                  iou_thrs = iou_thrs,
-                                                  metric_items = metric_items)
+                                                  acid=self.prim != "acid",
+                                                  metric=metric,
+                                                  logger=logger,
+                                                  jsonfile_prefix=jsonfile_prefix,
+                                                  classwise=classwise,
+                                                  proposal_nums=proposal_nums,
+                                                  iou_thrs=iou_thrs,
+                                                  metric_items=metric_items)
 
         ret = dict()
         ret.update({k + "_acid": v for k, v in acid_metric.items()})
@@ -783,14 +804,14 @@ class DualCervixDataset(CervixDataset):
 
     def evaluate_single_coco(self,
                              results,
-                             acid = True,
-                             metric = 'bbox',
-                             logger = None,
-                             jsonfile_prefix = None,
-                             classwise = False,
-                             proposal_nums = (100, 300, 1000),
-                             iou_thrs = None,
-                             metric_items = None):
+                             acid=True,
+                             metric='bbox',
+                             logger=None,
+                             jsonfile_prefix=None,
+                             classwise=False,
+                             proposal_nums=(100, 300, 1000),
+                             iou_thrs=None,
+                             metric_items=None):
         """Evaluation in COCO protocol.
 
         Args:
@@ -829,7 +850,7 @@ class DualCervixDataset(CervixDataset):
                 raise KeyError(f'metric {metric} is not supported')
         if iou_thrs is None:
             iou_thrs = np.linspace(
-                .5, 0.95, int(np.round((0.95 - .5) / .05)) + 1, endpoint = True)
+                .5, 0.95, int(np.round((0.95 - .5) / .05)) + 1, endpoint=True)
         if metric_items is not None:
             if not isinstance(metric_items, list):
                 metric_items = [metric_items]
@@ -842,7 +863,7 @@ class DualCervixDataset(CervixDataset):
             msg = f'Evaluating {metric}...'
             if logger is None:
                 msg = '\n' + msg
-            print_log(msg, logger = logger)
+            print_log(msg, logger=logger)
 
             if metric not in result_files:
                 raise KeyError(f'{metric} is not in results')
@@ -851,8 +872,8 @@ class DualCervixDataset(CervixDataset):
             except IndexError:
                 print_log(
                     'The testing results of the whole dataset is empty.',
-                    logger = logger,
-                    level = logging.ERROR)
+                    logger=logger,
+                    level=logging.ERROR)
                 break
 
             iou_type = 'bbox' if metric == 'proposal' else metric
@@ -933,7 +954,7 @@ class DualCervixDataset(CervixDataset):
                     table_data = [headers]
                     table_data += [result for result in results_2d]
                     table = AsciiTable(table_data)
-                    print_log('\n' + table.table, logger = logger)
+                    print_log('\n' + table.table, logger=logger)
 
                 if metric_items is None:
                     metric_items = [
@@ -978,13 +999,13 @@ class DualCervixDataset(CervixDataset):
 
     def evaluate(self,
                  results,
-                 metric = 'bbox',
-                 logger = None,
-                 jsonfile_prefix = None,
-                 classwise = False,
-                 proposal_nums = (100, 300, 1000),
-                 iou_thrs = None,
-                 metric_items = None):
+                 metric='bbox',
+                 logger=None,
+                 jsonfile_prefix=None,
+                 classwise=False,
+                 proposal_nums=(100, 300, 1000),
+                 iou_thrs=None,
+                 metric_items=None):
         """将醋酸和碘的检测结果分离出来，分别计算评价指标
 
         Args:
@@ -1031,28 +1052,29 @@ class SingleCervixDataset(CervixDataset):
 
     def __init__(self,
                  img_type,
-                 classes = None,
+                 classes=None,
                  *args, **kwargs):
-        super(SingleCervixDataset, self).__init__(classes = classes,
+        super(SingleCervixDataset, self).__init__(classes=classes,
                                                   *args, **kwargs)
         # ! img_type 取值为acid, iodine，用来加到评估指标的命名中
         self.img_type = img_type
         self._iou_threshs = list(range(50, 100, 5))
         self._max_dets = [1, 2, 3, 5, 10, 100]
-        self._class_names = self.get_classes(classes = classes)
+        self._fp_rates = [1 / 8, 1 / 4, 1 / 2, 1, 2, 4, 8]
+        self._class_names = self.get_classes(classes=classes)
 
     def evaluate(self,
                  results,
-                 metric = 'bbox',
-                 logger = None,
-                 jsonfile_prefix = None,
-                 classwise = False,
-                 proposal_nums = (100, 300, 1000),
-                 iou_thr = None,
-                 metric_items = None):
+                 metric='bbox',
+                 logger=None,
+                 jsonfile_prefix=None,
+                 classwise=False,
+                 proposal_nums=(100, 300, 1000),
+                 iou_thr=None,
+                 metric_items=None):
         # tt = super(SingleCervixDataset, self).evaluate(results,metric,logger,jsonfile_prefix,classwise,proposal_nums,iou_thr,metric_items)
         tf_dets = self.convert_dets_format(results)
         tf_annos = self.get_format_annos(self.data_infos)
-        ret = self.evaluate_single(tf_dets, tf_annos, suffix = "_" + self.img_type)
+        ret = self.evaluate_single(tf_dets, tf_annos, suffix="_" + self.img_type)
 
         return ret
