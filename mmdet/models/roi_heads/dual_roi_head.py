@@ -362,6 +362,7 @@ class DualRoIHead(StandardRoIHead):
 
 
 
+
         # # acid rescale
         # acid_bbox_feats = self.bbox_roi_extractor(acid_feats[:self.bbox_roi_extractor.num_inputs], acid_rois)
         # acid_iodine_rois = acid_rois.clone()
