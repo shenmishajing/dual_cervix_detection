@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 
 from ..builder import DETECTORS
@@ -23,14 +24,26 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
             cur_acid_res, cur_iodine_res = [], []
             for c in range(len(acid_results[i])):
                 cur_acid_bboxes = acid_results[i][c]
+                cur_acid_inds = cur_acid_bboxes[..., -1] > self.score_threshold
+                top_k_inds = cur_acid_bboxes[:, -1].argsort()[-self.top_k:]
+                cur_acid_inds[top_k_inds] = True
+                cur_acid_bboxes = cur_acid_bboxes[cur_acid_inds]
+
                 cur_iodine_bboxes = iodine_results[i][c]
-                cur_acid_bboxes = cur_acid_bboxes[cur_acid_bboxes[..., -1] > self.score_threshold]
-                cur_iodine_bboxes = cur_iodine_bboxes[cur_iodine_bboxes[..., -1] > self.score_threshold]
+                cur_iodine_inds = cur_iodine_bboxes[..., -1] > self.score_threshold
+                top_k_inds = cur_iodine_bboxes[:, -1].argsort()[-self.top_k:]
+                cur_iodine_inds[top_k_inds] = True
+                cur_iodine_bboxes = cur_iodine_bboxes[cur_acid_inds]
                 if cur_acid_bboxes.shape[0] > 0 and cur_iodine_bboxes.shape[0] > 0:
                     iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
                     cur_acid_inds = np.max(iou, axis = 1) > self.iou_threshold
+                    top_k_inds = cur_acid_bboxes[:, -1].argsort()[-self.top_k:]
+                    cur_acid_inds[top_k_inds] = True
                     cur_acid_res.append(cur_acid_bboxes[cur_acid_inds])
+
                     cur_iodine_inds = np.max(iou, axis = 0) > self.iou_threshold
+                    top_k_inds = cur_iodine_bboxes[:, -1].argsort()[-self.top_k:]
+                    cur_iodine_inds[top_k_inds] = True
                     cur_iodine_res.append(cur_iodine_bboxes[cur_iodine_inds])
                 else:
                     cur_acid_res.append(cur_acid_bboxes[0:0])
