@@ -4,6 +4,7 @@ log_config = dict(
     interval = 50,
     hooks = [
         dict(type = 'TextLoggerHook'),
+        dict(type='TensorboardLoggerHook'),
         dict(type = 'WandbLoggerHook',
              with_step = False,
              init_kwargs = dict(project = 'dual_cervix_detection'))])
