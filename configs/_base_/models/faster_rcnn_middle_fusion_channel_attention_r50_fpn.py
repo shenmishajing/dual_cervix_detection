@@ -2,7 +2,7 @@
 model = dict(
     type = 'FasterRCNNMiddleFusionChannelAttention',
     prim = None,  # acid, iodine or None
-    no_shared_modules = ['backbone', 'neck', 'rpn_head', 'roi_head'],
+    no_shared_modules = ['rpn_head', 'roi_head'],
     pool_size = 1,
     backbone = dict(
         type = 'ResNet',
