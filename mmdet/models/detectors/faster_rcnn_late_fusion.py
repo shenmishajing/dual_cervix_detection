@@ -32,7 +32,7 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
                 cur_iodine_inds = cur_iodine_bboxes[..., -1] > self.score_threshold
                 top_k_inds = cur_iodine_bboxes[:, -1].argsort()[-self.top_k:]
                 cur_iodine_inds[top_k_inds] = True
-                cur_iodine_bboxes = cur_iodine_bboxes[cur_acid_inds]
+                cur_iodine_bboxes = cur_iodine_bboxes[cur_iodine_inds]
                 if cur_acid_bboxes.shape[0] > 0 and cur_iodine_bboxes.shape[0] > 0:
                     iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
                     cur_acid_inds = np.max(iou, axis = 1) > self.iou_threshold
