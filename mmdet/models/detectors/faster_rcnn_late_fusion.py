@@ -8,8 +8,9 @@ from .two_stage_cervix import TwoStageCervixDetector
 class FasterRCNNLateFusion(TwoStageCervixDetector):
     """Implementation of `Faster R-CNN <https://arxiv.org/abs/1506.01497>`_"""
 
-    def __init__(self, iou_threshold = 0.2, score_threshold = 0.8, *args, **kwargs):
+    def __init__(self, top_k = 10, iou_threshold = 0.05, score_threshold = 0.5, *args, **kwargs):
         super(FasterRCNNLateFusion, self).__init__(*args, **kwargs)
+        self.top_k = top_k
         self.iou_threshold = iou_threshold
         self.score_threshold = score_threshold
 
@@ -22,8 +23,8 @@ class FasterRCNNLateFusion(TwoStageCervixDetector):
             cur_acid_res, cur_iodine_res = [], []
             for c in range(len(acid_results[i])):
                 cur_acid_bboxes = acid_results[i][c]
-                cur_acid_bboxes = cur_acid_bboxes[cur_acid_bboxes[..., -1] > self.score_threshold]
                 cur_iodine_bboxes = iodine_results[i][c]
+                cur_acid_bboxes = cur_acid_bboxes[cur_acid_bboxes[..., -1] > self.score_threshold]
                 cur_iodine_bboxes = cur_iodine_bboxes[cur_iodine_bboxes[..., -1] > self.score_threshold]
                 if cur_acid_bboxes.shape[0] > 0 and cur_iodine_bboxes.shape[0] > 0:
                     iou = self.bbox_overlaps(cur_acid_bboxes, cur_iodine_bboxes)
