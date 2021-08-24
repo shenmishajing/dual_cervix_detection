@@ -18,14 +18,14 @@ class FasterRCNNMiddleFusionChannelAttention(FasterRCNNMiddleFusion):
         self.avg_pool = nn.AdaptiveAvgPool2d((pool_size, pool_size))
         self.attn_module = nn.ModuleList([
             nn.ModuleList([
-                nn.Linear(self.neck[self.stages[0]].out_channels * 2 * pool_area, middle_channels),
+                nn.Linear(self.fusion_module_in_channels * 2 * pool_area, middle_channels),
                 nn.ReLU(),
                 nn.Linear(middle_channels, middle_channels),
                 nn.ReLU(),
-                nn.Linear(middle_channels, self.neck[self.stages[0]].out_channels * 2 * pool_area),
+                nn.Linear(middle_channels, self.fusion_module_in_channels * 2 * pool_area),
                 nn.Sigmoid()
             ])
-            for _ in range(self.neck[self.stages[0]].num_outs)
+            for _ in range(self.fusion_module_num)
         ])
 
     def feature_fusion(self, acid_feats, iodine_feats):

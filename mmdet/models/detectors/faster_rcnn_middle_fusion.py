@@ -12,9 +12,16 @@ class FasterRCNNMiddleFusion(TwoStageCervixDetector):
     def __init__(self, *args, **kwargs):
         super(FasterRCNNMiddleFusion, self).__init__(*args, **kwargs)
 
+        if isinstance(self.neck, nn.ModuleDict):
+            self.fusion_module_in_channels = self.neck[self.stages[0]].out_channels
+            self.fusion_module_num = self.neck[self.stages[0]].num_outs
+        else:
+            self.fusion_module_in_channels = self.neck.out_channels
+            self.fusion_module_num = self.neck.num_outs
+
         self.fusion_module = nn.ModuleList([
-            nn.Conv2d(self.neck[self.stages[0]].out_channels * 2, self.neck[self.stages[0]].out_channels, 1)
-            for _ in range(self.neck[self.stages[0]].num_outs)
+            nn.Conv2d(self.fusion_module_in_channels * 2, self.fusion_module_in_channels, 1)
+            for _ in range(self.fusion_module_num)
         ])
 
     def feature_fusion(self, acid_feats, iodine_feats):
