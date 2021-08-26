@@ -133,8 +133,9 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 acid_label_weights,
                 acid_bbox_targets,
                 acid_bbox_weights,
-                acid_offset_targets,
-                acid_offset_weights)
+                # acid_offset_targets,
+                # acid_offset_weights
+                )
 
     def get_targets(self,
                     acid_sampling_results,
@@ -209,14 +210,14 @@ class DualBBoxHead(Shared2FCBBoxHead):
     def loss(self,
              acid_cls_score,
              acid_bbox_pred,
-             acid_proposal_offsets,
+             #acid_proposal_offsets,
              acid_rois,
              acid_labels,
              acid_label_weights,
              acid_bbox_targets,
              acid_bbox_weights,
-             acid_offset_targets,
-             acid_offset_weights,
+             #acid_offset_targets,
+             #acid_offset_weights,
              reduction_override = None):
         losses = dict()
 
@@ -267,20 +268,20 @@ class DualBBoxHead(Shared2FCBBoxHead):
                     reduction_override = reduction_override)
             else:
                 losses['acid_loss_bbox'] = acid_bbox_pred[acid_pos_inds].sum()
-        if acid_proposal_offsets is not None:
-            bg_class_ind = self.num_classes
-            # 0~self.num_classes-1 are FG, self.num_classes is BG
-            acid_pos_inds = (acid_labels >= 0) & (acid_labels < bg_class_ind)
-            # do not perform bounding box regression for BG anymore.
-            if acid_pos_inds.any():
-                losses['acid_loss_offset'] = self.loss_bbox(
-                    acid_proposal_offsets[acid_pos_inds.type(torch.bool)],
-                    acid_offset_targets[acid_pos_inds.type(torch.bool)],
-                    acid_offset_weights[acid_pos_inds.type(torch.bool)],
-                    avg_factor = acid_offset_targets.size(0),
-                    reduction_override = reduction_override)
-            else:
-                losses['acid_loss_offset'] = acid_proposal_offsets[acid_pos_inds].sum()
+        # if acid_proposal_offsets is not None:
+        #     bg_class_ind = self.num_classes
+        #     # 0~self.num_classes-1 are FG, self.num_classes is BG
+        #     acid_pos_inds = (acid_labels >= 0) & (acid_labels < bg_class_ind)
+        #     # do not perform bounding box regression for BG anymore.
+        #     if acid_pos_inds.any():
+        #         losses['acid_loss_offset'] = self.loss_bbox(
+        #             acid_proposal_offsets[acid_pos_inds.type(torch.bool)],
+        #             acid_offset_targets[acid_pos_inds.type(torch.bool)],
+        #             acid_offset_weights[acid_pos_inds.type(torch.bool)],
+        #             avg_factor = acid_offset_targets.size(0),
+        #             reduction_override = reduction_override)
+        #     else:
+        #         losses['acid_loss_offset'] = acid_proposal_offsets[acid_pos_inds].sum()
 
 
         return losses
