@@ -268,3 +268,14 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+    # / data2 / hhp / model / cervix / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn.py
+    # / data2 / hhp / model / cervix / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn / epoch_13.pth
+    # --eval
+    # "bbox"
+    # --out
+    # ./ testoutanaly / pkl / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn_e13.pkl
+    # --show - dir
+    # ./ testoutanaly / visua / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn_e13
+    # --show - score - thr
+    # 0.8

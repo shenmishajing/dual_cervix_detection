@@ -29,10 +29,18 @@ class DualRoIHead(StandardRoIHead):
         #     nn.Sigmoid()
         # ])
 
+        # # fusion b
         # self.fusion_modules_b = nn.ModuleList([
         #     nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels,3,stride=1, padding=1),
         #     nn.ReLU()
         # ])
+
+        # # fusion b for 1x1 conv
+        # self.fusion_modules_b = nn.ModuleList([
+        #     nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 1),
+        #     nn.ReLU()
+        # ])
+
 
         # fusion c
         # self.fusion_modules_c = nn.ModuleList([
@@ -56,12 +64,34 @@ class DualRoIHead(StandardRoIHead):
         # ])
         # self.fusion_conv_f = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3, stride=1, padding=1)
 
+        # # #fusion f for 1x1 conv
+        # self.fusion_modules_f = nn.ModuleList([
+        #     nn.Linear(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
+        #     nn.ReLU(),
+        #     nn.Linear(self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels),
+        #     nn.ReLU(),
+        #     nn.Linear(self.bbox_head.conv_out_channels, 2 * self.bbox_head.conv_out_channels),
+        #     nn.Sigmoid()
+        # ])
+        # self.fusion_conv_f = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 1)
+
+
+
+
+
         # fusion g or g_b
         self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
         self.fusion_relu = nn.ReLU()
         self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
         self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
                                         stride=1, padding=1)
+
+        # # fusion g or g_b  for 1x1 conv
+        # self.fusion_conv_g1 = nn.Conv2d(2, 16, 1)
+        # self.fusion_relu = nn.ReLU()
+        # self.fusion_conv_g2 = nn.Conv2d(16, 2, 1)
+        # self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 1)
+
 
         # # fusion g_c
         # self.fusion_conv_g1 = nn.Conv2d(2, 64, 3, stride=1, padding=1)
