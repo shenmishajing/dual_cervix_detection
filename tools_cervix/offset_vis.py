@@ -42,6 +42,8 @@ def main():
 
                 cur_img = np.concatenate([cur_acid_img, cur_iodine_img], axis = 1)
                 mmcv.imwrite(cur_img, os.path.join(output_path, os.path.splitext(acid_img_name)[0] + f'_{i}.jpg'))
+                mmcv.imwrite(cur_acid_img, os.path.join(output_path, os.path.splitext(acid_img_name)[0] + f'_{i}_1.jpg'))
+                mmcv.imwrite(cur_iodine_img, os.path.join(output_path, os.path.splitext(acid_img_name)[0] + f'_{i}_2.jpg'))
 
             for i in range(len(draw_offset_info['iodine_proposals'])):
                 cur_acid_img = acid_img.copy()
@@ -63,6 +65,8 @@ def main():
 
                 cur_img = np.concatenate([cur_iodine_img, cur_acid_img], axis = 1)
                 mmcv.imwrite(cur_img, os.path.join(output_path, os.path.splitext(iodine_img_name)[0] + f'_{i}.jpg'))
+                mmcv.imwrite(cur_iodine_img, os.path.join(output_path, os.path.splitext(iodine_img_name)[0] + f'_{i}_1.jpg'))
+                mmcv.imwrite(cur_acid_img, os.path.join(output_path, os.path.splitext(iodine_img_name)[0] + f'_{i}_2.jpg'))
 
 
 def read_json():
