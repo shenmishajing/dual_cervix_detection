@@ -14,8 +14,9 @@ from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
 
 from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
-                            replace_ImageToTensor)
+                            replace_ImageToTensor, get_loading_pipeline)
 from mmdet.models import build_detector
+from tools.analysis_tools.visualize_results import visualize_results
 
 
 def parse_args():
@@ -52,6 +53,21 @@ def parse_args():
         type=float,
         default=0.3,
         help='score threshold (default: 0.3)')
+    parser.add_argument(
+        '--visualize-dir', help = 'directory where visualized images will be saved')
+    parser.add_argument(
+        '--visualize-score-thr',
+        type = float,
+        default = 0.3,
+        help = 'score threshold (default: 0.3)')
+    parser.add_argument(
+        '--visualize-gt-only',
+        action = 'store_true',
+        help = 'only visualize ground truth')
+    parser.add_argument(
+        '--visualize-num-match-gt',
+        action = 'store_true',
+        help = 'only visualize num of det bboxes as ground truth')
     parser.add_argument(
         '--gpu-collect',
         action='store_true',
@@ -107,10 +123,10 @@ def main():
     args = parse_args()
 
     assert args.out or args.eval or args.format_only or args.show \
-        or args.show_dir, \
+           or args.show_dir or args.visualize_dir, \
         ('Please specify at least one operation (save/eval/format/show the '
          'results / save the results) with the argument "--out", "--eval"'
-         ', "--format-only", "--show" or "--show-dir"')
+         ', "--format-only", "--show" or "--show-dir" or "--visualize-dir"')
 
     if args.eval and args.format_only:
         raise ValueError('--eval and --format_only cannot be both specified')
@@ -264,6 +280,13 @@ def main():
             # main_ready_detail = pd.DataFrame([metric_acid, metric_iodine], columns=dic_acid)
             main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
             main_ready_detail.to_excel('./acid_iodine_result.xlsx')
+        if args.visualize_dir:
+            cfg.data.test.pipeline = get_loading_pipeline(cfg.data.train.pipeline)
+            dataset = build_dataset(cfg.data.test)
+            suffix = '_'.join(args.checkpoint.split('/')[-2:]).split('.')[0]
+            visualize_results(dataset, outputs, show_dir = args.visualize_dir, score_thr = args.visualize_score_thr,
+                              visualize_num_match_gt = args.visualize_num_match_gt, suffix = suffix)
+
 
 
 if __name__ == '__main__':

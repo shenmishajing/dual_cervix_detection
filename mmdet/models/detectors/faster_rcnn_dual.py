@@ -1,3 +1,5 @@
+import os
+import pickle
 import warnings
 
 from torch import nn
@@ -12,14 +14,14 @@ class FasterRCNNDual(TwoStageDetector):
     """Implementation of `Faster R-CNN <https://arxiv.org/abs/1506.01497>`_"""
 
     def __init__(self, backbone,
-                 neck=None,
-                 rpn_head=None,
-                 roi_head_acid=None,roi_head_iodine=None,
-                 prim=None,
-                 train_cfg=None,
-                 test_cfg=None,
-                 pretrained=None,
-                 init_cfg=None):
+                 neck = None,
+                 rpn_head = None,
+                 roi_head_acid = None, roi_head_iodine = None,
+                 prim = None,
+                 train_cfg = None,
+                 test_cfg = None,
+                 pretrained = None,
+                 init_cfg = None):
         super(TwoStageDetector, self).__init__(init_cfg)
 
         if prim is None:
@@ -39,32 +41,27 @@ class FasterRCNNDual(TwoStageDetector):
             self.neck = build_neck(neck)
 
         if rpn_head is not None:
-
             rpn_train_cfg = train_cfg.rpn if train_cfg is not None else None
             rpn_head_ = rpn_head.copy()
-            rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            rpn_head_.update(train_cfg = rpn_train_cfg, test_cfg = test_cfg.rpn)
             self.rpn_head = build_head(rpn_head_)
 
-
         if roi_head_acid is not None and roi_head_iodine is not None:
-
             # update train and test cfg here for now
             # TODO: refactor assigner & sampler
             rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
-            roi_head_acid.update(train_cfg=rcnn_train_cfg)
-            roi_head_acid.update(test_cfg=test_cfg.rcnn)
+            roi_head_acid.update(train_cfg = rcnn_train_cfg)
+            roi_head_acid.update(test_cfg = test_cfg.rcnn)
             roi_head_acid.pretrained = pretrained
             self.roi_head_acid = build_head(roi_head_acid)
 
-            roi_head_iodine.update(train_cfg=rcnn_train_cfg)
-            roi_head_iodine.update(test_cfg=test_cfg.rcnn)
+            roi_head_iodine.update(train_cfg = rcnn_train_cfg)
+            roi_head_iodine.update(test_cfg = test_cfg.rcnn)
             roi_head_iodine.pretrained = pretrained
             self.roi_head_iodine = build_head(roi_head_iodine)
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
-
-
 
     def extract_feat(self, acid_img, iodine_img):
         """Directly extract features from the backbone+neck."""
@@ -106,20 +103,42 @@ class FasterRCNNDual(TwoStageDetector):
             acid_proposal_list = acid_proposals
             iodine_proposal_list = iodine_proposals
 
+        roi_acid_losses, draw_offset_info = self.roi_head_acid.forward_train(acid_feats = acid_feats, iodine_feats = iodine_feats,
+                                                                             img_metas = img_metas,
+                                                                             acid_proposal_list = acid_proposal_list,
+                                                                             acid_gt_bboxes = acid_gt_bboxes,
+                                                                             iodine_gt_bboxes = iodine_gt_bboxes,
+                                                                             acid_gt_labels = acid_gt_labels,
+                                                                             iodine_gt_labels = iodine_gt_labels,
+                                                                             acid_gt_bboxes_ignore = None,
+                                                                             iodine_gt_bboxes_ignore = None, **kwargs)
+        roi_iodine_losses, iodine_draw_offset_info = self.roi_head_iodine.forward_train(acid_feats = iodine_feats,
+                                                                                        iodine_feats = acid_feats,
+                                                                                        img_metas = img_metas,
+                                                                                        acid_proposal_list = iodine_proposal_list,
+                                                                                        acid_gt_bboxes = iodine_gt_bboxes,
+                                                                                        iodine_gt_bboxes = acid_gt_bboxes,
+                                                                                        acid_gt_labels = iodine_gt_labels,
+                                                                                        iodine_gt_labels = acid_gt_labels,
+                                                                                        acid_gt_bboxes_ignore = None,
+                                                                                        iodine_gt_bboxes_ignore = None, **kwargs)
 
-        roi_acid_losses = self.roi_head_acid.forward_train(acid_feats = acid_feats, iodine_feats=iodine_feats, img_metas =img_metas, acid_proposal_list =acid_proposal_list, acid_gt_bboxes =acid_gt_bboxes,
-                                                           iodine_gt_bboxes=iodine_gt_bboxes, acid_gt_labels =acid_gt_labels,iodine_gt_labels =iodine_gt_labels, acid_gt_bboxes_ignore = None,
-                                                           iodine_gt_bboxes_ignore = None, **kwargs)
-        roi_iodine_losses = self.roi_head_iodine.forward_train(acid_feats = iodine_feats, iodine_feats=acid_feats, img_metas =img_metas, acid_proposal_list =iodine_proposal_list, acid_gt_bboxes =iodine_gt_bboxes,
-                                                               iodine_gt_bboxes=acid_gt_bboxes, acid_gt_labels =iodine_gt_labels,iodine_gt_labels =acid_gt_labels, acid_gt_bboxes_ignore=None,
-                                                               iodine_gt_bboxes_ignore=None, **kwargs)
         for k, v in roi_acid_losses.items():
             if any([name in k for name in self.prim]):
                 losses[k] = v
         for k, v in roi_iodine_losses.items():
-            k=k.replace('acid','iodine')
+            k = k.replace('acid', 'iodine')
             if any([name in k for name in self.prim]):
                 losses[k] = v
+        for i in range(len(iodine_draw_offset_info)):
+            for k, v in iodine_draw_offset_info[i].items():
+                k = k.replace('acid', 'iodine')
+                draw_offset_info[i][k] = v
+
+            cur_draw_offset_info = draw_offset_info[i]
+            file_name = os.path.splitext(cur_draw_offset_info['img_meta']["filename"][0])[0]
+            path = f'/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_14/results/{file_name}.pkl'
+            pickle.dump(cur_draw_offset_info, open(path, 'wb'))
 
         return losses
 
@@ -168,10 +187,11 @@ class FasterRCNNDual(TwoStageDetector):
         else:
             iodine_proposal_list = iodine_proposals
 
-        roi_result_acid = self.roi_head_acid.simple_test(acid_feats = acid_feats, iodine_feats = iodine_feats, acid_proposal_list = acid_proposal_list,
-                                                         img_metas=img_metas, rescale = rescale)
-        roi_result_iodine = self.roi_head_iodine.simple_test(acid_feats = iodine_feats, iodine_feats = acid_feats, acid_proposal_list = iodine_proposal_list,
-                                                             img_metas=img_metas, rescale=rescale)
+        roi_result_acid = self.roi_head_acid.simple_test(acid_feats = acid_feats, iodine_feats = iodine_feats,
+                                                         acid_proposal_list = acid_proposal_list,
+                                                         img_metas = img_metas, rescale = rescale)
+        roi_result_iodine = self.roi_head_iodine.simple_test(acid_feats = iodine_feats, iodine_feats = acid_feats,
+                                                             acid_proposal_list = iodine_proposal_list,
+                                                             img_metas = img_metas, rescale = rescale)
 
-        return (roi_result_acid,roi_result_iodine)
-
+        return (roi_result_acid, roi_result_iodine)

@@ -66,6 +66,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 - bbox_weights(Tensor):Regression weights for all
                   proposals, has shape (num_proposals, 4).
         """
+        draw_offset_info = dict()
         # offset
         assert len(acid_gt_bboxes) == len(iodine_gt_bboxes), 'number of acid and iodine gt bboxes must match'
         acid_gt_bboxes_inds = acid_gt_bboxes[:, 0].sort()[1]
@@ -77,6 +78,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_num_pos = acid_pos_bboxes.size(0)
         acid_num_neg = acid_neg_bboxes.size(0)
         acid_num_samples = acid_num_pos + acid_num_neg
+        draw_offset_info['acid_proposals'] = acid_pos_bboxes
 
         # original implementation uses new_zeros since BG are set to be 0
         # now use empty & fill because BG cat_id = num_classes,
@@ -87,6 +89,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
         acid_bbox_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 4)
         acid_offset_targets = acid_pos_bboxes.new_zeros(acid_num_samples, 2) #2/4 for rescale
         acid_offset_weights = acid_pos_bboxes.new_zeros(acid_num_samples, 2) #2/4 for rescale
+        draw_offset_info['acid_gt_bboxes'] = acid_pos_bboxes.new_zeros(acid_num_pos, 4)
+        draw_offset_info['acid_iodine_gt_bboxes'] = acid_pos_bboxes.new_zeros(acid_num_pos, 4)
         if acid_num_pos > 0:
             acid_labels[:acid_num_pos] = acid_pos_gt_labels
             acid_pos_weight = 1.0 if cfg.pos_weight <= 0 else cfg.pos_weight
@@ -103,6 +107,10 @@ class DualBBoxHead(Shared2FCBBoxHead):
             acid_bbox_targets[:acid_num_pos, :] = acid_pos_bbox_targets
             acid_bbox_weights[:acid_num_pos, :] = 1
             for i in range(acid_num_pos):
+                draw_offset_info['acid_gt_bboxes'][i, :] = torch.mean(
+                    acid_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
+                draw_offset_info['acid_iodine_gt_bboxes'][i, :] = torch.mean(
+                    iodine_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
                 # no rescale
                 acid_offset_target = torch.mean(iodine_gt_bboxes_sorted[acid_gt_bboxes_inds == acid_pos_assigned_gt_inds[i]], dim = 0)
                 acid_offset_target = acid_offset_target - acid_pos_bboxes[i, :]
@@ -134,7 +142,8 @@ class DualBBoxHead(Shared2FCBBoxHead):
                 acid_bbox_targets,
                 acid_bbox_weights,
                 acid_offset_targets,
-                acid_offset_weights)
+                acid_offset_weights,
+                draw_offset_info)
 
     def get_targets(self,
                     acid_sampling_results,
@@ -202,7 +211,7 @@ class DualBBoxHead(Shared2FCBBoxHead):
             img_metas, cfg = rcnn_train_cfg)
 
         if concat:
-            bbox_targets = [torch.cat(b) for b in bbox_targets]
+            bbox_targets = [torch.cat(b) for b in bbox_targets[:-1]] + [bbox_targets[-1]]
         return bbox_targets
 
     @force_fp32(apply_to = ('cls_score', 'bbox_pred'))

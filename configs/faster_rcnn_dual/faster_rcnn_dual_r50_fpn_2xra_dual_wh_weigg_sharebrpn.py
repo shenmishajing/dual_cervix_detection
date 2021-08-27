@@ -3,6 +3,8 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py', '../_base_/default_runtime.py'
 ]
 
+load_from = '/data2/hhp/model/cervix/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_13.pth'
+
 # model settings
 model = dict(
     type = 'FasterRCNNDual',
@@ -138,29 +140,24 @@ model = dict(
         # e.g., nms=dict(type='soft_nms', iou_threshold=0.5, min_score=0.05)
     ))
 
-
-
-
-
 # learning policy
 lr_config = dict(
-    policy='step',
-    warmup='linear',
-    warmup_iters=500,
-    warmup_ratio=0.001,
-    step=[11, 16])
-runner = dict(type='EpochBasedRunner', max_epochs=24)
-#!
-optimizer = dict(lr=0.0025)
+    policy = 'step',
+    warmup = 'linear',
+    warmup_iters = 500,
+    warmup_ratio = 0.001,
+    step = [11, 16])
+runner = dict(type = 'EpochBasedRunner', max_epochs = 1)
+# !
+optimizer = dict(lr = 0.0)
 
 # yapf:disable
 log_config = dict(
-    interval=50,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
+    interval = 50,
+    hooks = [
+        dict(type = 'TextLoggerHook'),
+        dict(type = 'TensorboardLoggerHook')
     ])
-
 
 data_root = 'data/cervix/'
 data = dict(
@@ -170,7 +167,7 @@ data = dict(
         prim = 'acid',
         acid_ann_file = data_root + 'hsil_rereannos/train_acid.json',
         iodine_ann_file = data_root + 'hsil_rereannos/train_iodine.json',
- ),
+    ),
     val = dict(
         prim = 'acid',
         acid_ann_file = data_root + 'hsil_rereannos/val_acid.json',
@@ -179,4 +176,4 @@ data = dict(
         prim = 'acid',
         acid_ann_file = data_root + 'hsil_rereannos/test_acid.json',
         iodine_ann_file = data_root + 'hsil_rereannos/test_iodine.json',
-))
+    ))

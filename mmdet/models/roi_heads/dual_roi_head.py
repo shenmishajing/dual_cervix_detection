@@ -357,14 +357,14 @@ class DualRoIHead(StandardRoIHead):
         losses = dict()
         # bbox head forward and loss
         if self.with_bbox:
-            bbox_results = self._bbox_forward_train(acid_feats, iodine_feats,
+            bbox_results, draw_offset_info = self._bbox_forward_train(acid_feats, iodine_feats,
                                                     acid_sampling_results,
                                                     acid_gt_bboxes, iodine_gt_bboxes,
                                                     acid_gt_labels, iodine_gt_labels,
                                                     img_metas)
             losses.update(bbox_results['loss_bbox'])
 
-        return losses
+        return losses, draw_offset_info
 
     def _bbox_forward(self, acid_feats, iodine_feats, acid_rois, img_metas):
         """Box head forward function used in both training and testing."""
@@ -453,10 +453,23 @@ class DualRoIHead(StandardRoIHead):
                                         bbox_results['acid_bbox_pred'],
                                         bbox_results['acid_proposal_offsets'],
                                         acid_rois,
-                                        *bbox_targets)
+                                        *bbox_targets[:-1])
+        draw_offset_info = bbox_targets[-1]
+        for i in range(len(img_metas)):
+            cur_acid_inds = acid_rois[:, 0] == i
+            cur_acid_pos_num = len(acid_sampling_results[i].pos_bboxes)
+            cur_acid_proposal_offsets = bbox_results['acid_proposal_offsets'][cur_acid_inds][:cur_acid_pos_num]
+            cur_acid_proposal_offsets = cur_acid_proposal_offsets * cur_acid_proposal_offsets.new_tensor(img_metas[i]['pad_shape'][:2])
+            cur_acid_proposal_offsets = torch.cat([cur_acid_proposal_offsets, cur_acid_proposal_offsets], dim = 1)
+            draw_offset_info[i]['acid_proposals_offseted'] = draw_offset_info[i]['acid_proposals'] + cur_acid_proposal_offsets
+
+            for k in draw_offset_info[i]:
+                if isinstance(draw_offset_info[i][k], torch.Tensor):
+                    draw_offset_info[i][k] = draw_offset_info[i][k].cpu().detach().numpy()
+            draw_offset_info[i]['img_meta'] = img_metas[i]
 
         bbox_results.update(loss_bbox = loss_bbox)
-        return bbox_results
+        return bbox_results, draw_offset_info
 
     def simple_test(self,
                     acid_feats=None, iodine_feats=None,
