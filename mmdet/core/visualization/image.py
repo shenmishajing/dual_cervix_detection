@@ -1,4 +1,3 @@
-# Copyright (c) OpenMMLab. All rights reserved.
 import matplotlib.pyplot as plt
 import mmcv
 import numpy as np
@@ -138,23 +137,29 @@ def imshow_det_bboxes(img,
         np_poly = np.array(poly).reshape((4, 2))
         polygons.append(Polygon(np_poly))
         color.append(bbox_color)
-        label_text = class_names[
-            label] if class_names is not None else f'class {label}'
-        if len(bbox) > 4:
-            label_text += f'|{bbox[-1]:.02f}'
+        if class_names is not None and len(class_names) == 1:
+            if len(bbox) > 4:
+                label_text = f'{bbox[-1]:.02f}'
+            else:
+                label_text = ''
+        else:
+            label_text = class_names[
+                label] if class_names is not None else f'class {label}'
+            if len(bbox) > 4:
+                label_text += f'|{bbox[-1]:.02f}'
         ax.text(
             bbox_int[0],
             bbox_int[1],
             f'{label_text}',
             bbox={
-                'facecolor': 'black',
+                'facecolor': 'none',
                 'alpha': 0.8,
                 'pad': 0.7,
                 'edgecolor': 'none'
             },
             color=text_color,
             fontsize=font_size,
-            verticalalignment='top',
+            verticalalignment='bottom',
             horizontalalignment='left')
         if segms is not None:
             color_mask = mask_colors[labels[i]]
