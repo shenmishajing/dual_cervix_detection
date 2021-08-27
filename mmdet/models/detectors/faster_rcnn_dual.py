@@ -132,7 +132,7 @@ class FasterRCNNDual(TwoStageDetector):
                 losses[k] = v
         for i in range(len(iodine_draw_offset_info)):
             for k, v in iodine_draw_offset_info[i].items():
-                k = k.replace('acid', 'iodine')
+                k = k.replace('iodine', 'I').replace('acid', 'iodine').replace('I', 'acid')
                 draw_offset_info[i][k] = v
 
             cur_draw_offset_info = draw_offset_info[i]
