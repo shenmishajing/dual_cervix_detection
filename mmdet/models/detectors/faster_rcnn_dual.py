@@ -137,7 +137,7 @@ class FasterRCNNDual(TwoStageDetector):
 
             cur_draw_offset_info = draw_offset_info[i]
             file_name = os.path.splitext(cur_draw_offset_info['img_meta']["filename"][0])[0]
-            path = f'/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_14/results/{file_name}.pkl'
+            path = f'/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_12/results/{file_name}.pkl'
             pickle.dump(cur_draw_offset_info, open(path, 'wb'))
 
         return losses

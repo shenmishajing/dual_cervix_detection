@@ -3,7 +3,7 @@ _base_ = [
     '../_base_/schedules/schedule_2x.py', '../_base_/default_runtime.py'
 ]
 
-load_from = '/data2/hhp/model/cervix/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_13.pth'
+load_from = '/data2/hhp/model/cervix/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_12.pth'
 
 # model settings
 model = dict(
