@@ -2,6 +2,7 @@
 model = dict(
     type = 'FasterRCNNEarlyFusion',
     prim = None,  # acid, iodine or None
+    no_shared_modules = ['rpn_head', 'roi_head'],
     backbone = dict(
         type = 'ResNet',
         in_channels = 6,

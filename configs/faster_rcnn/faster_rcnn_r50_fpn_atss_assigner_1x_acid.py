@@ -13,13 +13,3 @@ model = dict(
     train_cfg = dict(
         rpn = dict(assigner = dict(_delete_ = True, type = 'ATSSAssigner', topk = 9)),
         rcnn = dict(assigner = dict(_delete_ = True, type = 'ATSSAssigner', topk = 9))))
-
-log_config = dict(
-    interval = 50,
-    hooks = [
-        dict(type = 'TextLoggerHook'),
-        dict(type = 'WandbLoggerHook',
-             with_step = False,
-             init_kwargs = dict(project = 'dual_cervix_detection',
-                                name = 'faster_rcnn_r50_fpn_atss_assigner_1x_acid',
-                                tags = ['mmdetection', 'faster_rcnn', 'r50', 'fpn', '1x', 'acid']))])

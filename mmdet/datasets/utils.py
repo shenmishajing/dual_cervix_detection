@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 import copy
 import warnings
 from mmdet.datasets.pipelines import LoadAnnotations, LoadImageFromFile, LoadDualCervixAnnotations, LoadDualCervixImageFromFile
@@ -104,8 +105,7 @@ def get_loading_pipeline(pipeline):
     for cfg in pipeline:
         obj_cls = PIPELINES.get(cfg['type'])
         # TODO：use more elegant way to distinguish loading modules
-        if obj_cls is not None and obj_cls in (LoadDualCervixImageFromFile,
-                                               LoadDualCervixAnnotations):
+        if obj_cls is not None and obj_cls in (LoadDualCervixImageFromFile, LoadDualCervixAnnotations, LoadImageFromFile, LoadAnnotations):
             loading_pipeline_cfg.append(cfg)
     assert len(loading_pipeline_cfg) == 2, \
         'The data pipeline in your config file must include ' \
@@ -118,7 +118,7 @@ class NumClassCheckHook(Hook):
 
     def _check_head(self, runner):
         """Check whether the `num_classes` in head matches the length of
-        `CLASSSES` in `dataset`.
+        `CLASSES` in `dataset`.
 
         Args:
             runner (obj:`EpochBasedRunner`): Epoch based Runner.

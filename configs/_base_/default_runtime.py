@@ -4,11 +4,10 @@ log_config = dict(
     interval = 50,
     hooks = [
         dict(type = 'TextLoggerHook'),
+        dict(type='TensorboardLoggerHook'),
         dict(type = 'WandbLoggerHook',
              with_step = False,
-             init_kwargs = dict(project = 'dual_cervix_detection',
-                                name = 'default-project-name',
-                                tags = ['mmdetection']))])
+             init_kwargs = dict(project = 'dual_cervix_detection'))])
 # yapf:enable
 custom_hooks = [dict(type = 'NumClassCheckHook')]
 

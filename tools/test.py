@@ -14,81 +14,97 @@ from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
 
 from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
-                            replace_ImageToTensor)
+                            replace_ImageToTensor, get_loading_pipeline)
 from mmdet.models import build_detector
+from tools.analysis_tools.visualize_results import visualize_results
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description='MMDet test (and eval) a model')
-    parser.add_argument('config', help='test config file path')
-    parser.add_argument('checkpoint', help='checkpoint file')
+        description = 'MMDet test (and eval) a model')
+    parser.add_argument('config', help = 'test config file path')
+    parser.add_argument('checkpoint', help = 'checkpoint file')
     parser.add_argument(
         '--work-dir',
-        help='the directory to save the file containing evaluation metrics')
-    parser.add_argument('--out', help='output result file in pickle format')
+        help = 'the directory to save the file containing evaluation metrics')
+    parser.add_argument('--out', help = 'output result file in pickle format')
     parser.add_argument(
         '--fuse-conv-bn',
-        action='store_true',
-        help='Whether to fuse conv and bn, this will slightly increase'
-        'the inference speed')
+        action = 'store_true',
+        help = 'Whether to fuse conv and bn, this will slightly increase'
+               'the inference speed')
     parser.add_argument(
         '--format-only',
-        action='store_true',
-        help='Format the output results without perform evaluation. It is'
-        'useful when you want to format the result to a specific format and '
-        'submit it to the test server')
+        action = 'store_true',
+        help = 'Format the output results without perform evaluation. It is'
+               'useful when you want to format the result to a specific format and '
+               'submit it to the test server')
     parser.add_argument(
         '--eval',
-        type=str,
-        nargs='+',
-        help='evaluation metrics, which depends on the dataset, e.g., "bbox",'
-        ' "segm", "proposal" for COCO, and "mAP", "recall" for PASCAL VOC')
-    parser.add_argument('--show', action='store_true', help='show results')
+        type = str,
+        nargs = '+',
+        help = 'evaluation metrics, which depends on the dataset, e.g., "bbox",'
+               ' "segm", "proposal" for COCO, and "mAP", "recall" for PASCAL VOC')
+    parser.add_argument('--show', action = 'store_true', help = 'show results')
     parser.add_argument(
-        '--show-dir', help='directory where painted images will be saved')
+        '--show-dir', help = 'directory where painted images will be saved')
     parser.add_argument(
         '--show-score-thr',
-        type=float,
-        default=0.3,
-        help='score threshold (default: 0.3)')
+        type = float,
+        default = 0.3,
+        help = 'score threshold (default: 0.3)')
+    parser.add_argument(
+        '--visualize-dir', help = 'directory where visualized images will be saved')
+    parser.add_argument(
+        '--visualize-score-thr',
+        type = float,
+        default = 0.3,
+        help = 'score threshold (default: 0.3)')
+    parser.add_argument(
+        '--visualize-gt-only',
+        action = 'store_true',
+        help = 'only visualize ground truth')
+    parser.add_argument(
+        '--visualize-num-match-gt',
+        action = 'store_true',
+        help = 'only visualize num of det bboxes as ground truth')
     parser.add_argument(
         '--gpu-collect',
-        action='store_true',
-        help='whether to use gpu to collect results.')
+        action = 'store_true',
+        help = 'whether to use gpu to collect results.')
     parser.add_argument(
         '--tmpdir',
-        help='tmp directory used for collecting results from multiple '
-        'workers, available when gpu-collect is not specified')
+        help = 'tmp directory used for collecting results from multiple '
+               'workers, available when gpu-collect is not specified')
     parser.add_argument(
         '--cfg-options',
-        nargs='+',
-        action=DictAction,
-        help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
-        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
+        nargs = '+',
+        action = DictAction,
+        help = 'override some settings in the used config, the key-value pair '
+               'in xxx=yyy format will be merged into config file. If the value to '
+               'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
+               'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
+               'Note that the quotation marks are necessary and that no white space '
+               'is allowed.')
     parser.add_argument(
         '--options',
-        nargs='+',
-        action=DictAction,
-        help='custom options for evaluation, the key-value pair in xxx=yyy '
-        'format will be kwargs for dataset.evaluate() function (deprecate), '
-        'change to --eval-options instead.')
+        nargs = '+',
+        action = DictAction,
+        help = 'custom options for evaluation, the key-value pair in xxx=yyy '
+               'format will be kwargs for dataset.evaluate() function (deprecate), '
+               'change to --eval-options instead.')
     parser.add_argument(
         '--eval-options',
-        nargs='+',
-        action=DictAction,
-        help='custom options for evaluation, the key-value pair in xxx=yyy '
-        'format will be kwargs for dataset.evaluate() function')
+        nargs = '+',
+        action = DictAction,
+        help = 'custom options for evaluation, the key-value pair in xxx=yyy '
+               'format will be kwargs for dataset.evaluate() function')
     parser.add_argument(
         '--launcher',
-        choices=['none', 'pytorch', 'slurm', 'mpi'],
-        default='none',
-        help='job launcher')
-    parser.add_argument('--local_rank', type=int, default=0)
+        choices = ['none', 'pytorch', 'slurm', 'mpi'],
+        default = 'none',
+        help = 'job launcher')
+    parser.add_argument('--local_rank', type = int, default = 0)
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -107,10 +123,10 @@ def main():
     args = parse_args()
 
     assert args.out or args.eval or args.format_only or args.show \
-        or args.show_dir, \
+           or args.show_dir or args.visualize_dir, \
         ('Please specify at least one operation (save/eval/format/show the '
          'results / save the results) with the argument "--out", "--eval"'
-         ', "--format-only", "--show" or "--show-dir"')
+         ', "--format-only", "--show" or "--show-dir" or "--visualize-dir"')
 
     if args.eval and args.format_only:
         raise ValueError('--eval and --format_only cannot be both specified')
@@ -176,18 +192,18 @@ def main():
     dataset = build_dataset(cfg.data.test)
     data_loader = build_dataloader(
         dataset,
-        samples_per_gpu=samples_per_gpu,
-        workers_per_gpu=cfg.data.workers_per_gpu,
-        dist=distributed,
-        shuffle=False)
+        samples_per_gpu = samples_per_gpu,
+        workers_per_gpu = cfg.data.workers_per_gpu,
+        dist = distributed,
+        shuffle = False)
 
     # build the model and load checkpoint
     cfg.model.train_cfg = None
-    model = build_detector(cfg.model, test_cfg=cfg.get('test_cfg'))
+    model = build_detector(cfg.model, test_cfg = cfg.get('test_cfg'))
     fp16_cfg = cfg.get('fp16', None)
     if fp16_cfg is not None:
         wrap_fp16_model(model)
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    checkpoint = load_checkpoint(model, args.checkpoint, map_location = 'cpu')
     if args.fuse_conv_bn:
         model = fuse_conv_bn(model)
     # old versions did not save class info in checkpoints, this walkaround is
@@ -198,14 +214,14 @@ def main():
         model.CLASSES = dataset.CLASSES
 
     if not distributed:
-        model = MMDataParallel(model, device_ids=[0])
+        model = MMDataParallel(model, device_ids = [0])
         outputs = single_gpu_test(model, data_loader, args.show, args.show_dir,
                                   args.show_score_thr)
     else:
         model = MMDistributedDataParallel(
             model.cuda(),
-            device_ids=[torch.cuda.current_device()],
-            broadcast_buffers=False)
+            device_ids = [torch.cuda.current_device()],
+            broadcast_buffers = False)
         outputs = multi_gpu_test(model, data_loader, args.tmpdir,
                                  args.gpu_collect)
 
@@ -221,16 +237,22 @@ def main():
             eval_kwargs = cfg.get('evaluation', {}).copy()
             # hard-code way to remove EvalHook args
             for key in [
-                    'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
-                    'rule'
+                'interval', 'tmpdir', 'start', 'gpu_collect', 'save_best',
+                'rule'
             ]:
                 eval_kwargs.pop(key, None)
-            eval_kwargs.update(dict(metric=args.eval, **kwargs))
+            eval_kwargs.update(dict(metric = args.eval, **kwargs))
             metric = dataset.evaluate(outputs, **eval_kwargs)
             print(metric)
-            metric_dict = dict(config=args.config, metric=metric)
+            metric_dict = dict(config = args.config, metric = metric)
             if args.work_dir is not None and rank == 0:
                 mmcv.dump(metric_dict, json_file)
+        if args.visualize_dir:
+            cfg.data.test.pipeline = get_loading_pipeline(cfg.data.train.pipeline)
+            dataset = build_dataset(cfg.data.test)
+            suffix = '_'.join(args.checkpoint.split('/')[-2:]).split('.')[0]
+            visualize_results(dataset, outputs, show_dir = args.visualize_dir, score_thr = args.visualize_score_thr,
+                              visualize_num_match_gt = args.visualize_num_match_gt, suffix = suffix)
 
 
 if __name__ == '__main__':
