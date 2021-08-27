@@ -1,3 +1,4 @@
+# Copyright (c) OpenMMLab. All rights reserved.
 from .atss import ATSS
 from .atss_dual import ATSSDual
 from .autoassign import AutoAssign
