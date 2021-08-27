@@ -165,8 +165,8 @@ data = dict(
     workers_per_gpu = 2,
     train = dict(  # ! 閸忚渹缍嬮弻銉ф箙dataset闁劌鍨庨惃鍒rvix.py
         prim = 'acid',
-        acid_ann_file = data_root + 'hsil_rereannos/train_acid.json',
-        iodine_ann_file = data_root + 'hsil_rereannos/train_iodine.json',
+        acid_ann_file = data_root + 'hsil_rereannos/test_acid.json',
+        iodine_ann_file = data_root + 'hsil_rereannos/test_iodine.json',
     ),
     val = dict(
         prim = 'acid',
