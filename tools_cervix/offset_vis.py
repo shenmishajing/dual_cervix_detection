@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 
 def main():
-    result_root_path = '/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_1x_dual_zEPyVcfph'
+    result_root_path = '/data/zhengwenhao/Result/DualCervixDetection/OffsetVisualization/faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg_sharebrpn/epoch_12'
     result_path = os.path.join(result_root_path, 'results')
     output_path = os.path.join(result_root_path, 'images')
-    image_path = '../data/cervix/img'
+    image_path = 'data/cervix/img'
     thickness = 3
     for file_name in tqdm(os.listdir(result_path)):
         if os.path.isfile(os.path.join(result_path, file_name)) and file_name.endswith('.pkl'):
