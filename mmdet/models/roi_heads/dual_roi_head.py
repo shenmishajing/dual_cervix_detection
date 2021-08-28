@@ -24,10 +24,19 @@ class DualRoIHead(StandardRoIHead):
             nn.ReLU(),
             nn.Linear(self.bbox_head.conv_out_channels, 2), #rescale
         ])
-        self.fusion_modules = nn.ModuleList([
+        # self.fusion_modules = nn.ModuleList([
+        #     nn.Linear(2 * self.bbox_head.conv_out_channels * self.bbox_head.roi_feat_area, 1),
+        #     nn.Sigmoid()
+        # ])
+
+
+
+        #fusion j
+        self.fusion_modules_j = nn.ModuleList([
             nn.Linear(2 * self.bbox_head.conv_out_channels * self.bbox_head.roi_feat_area, 1),
             nn.Sigmoid()
         ])
+        self.fusion_conv_j = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels,3,stride=1, padding=1)
 
         # # fusion b
         # self.fusion_modules_b = nn.ModuleList([
@@ -79,12 +88,12 @@ class DualRoIHead(StandardRoIHead):
 
 
 
-        # fusion g or g_b
-        self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
-        self.fusion_relu = nn.ReLU()
-        self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
-        self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
-                                        stride=1, padding=1)
+        # # fusion g or g_b
+        # self.fusion_conv_g1 = nn.Conv2d(2, 16, 3, stride=1, padding=1)
+        # self.fusion_relu = nn.ReLU()
+        # self.fusion_conv_g2 = nn.Conv2d(16, 2, 3, stride=1, padding=1)
+        # self.fusion_conv_g4 = nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels, 3,
+        #                                 stride=1, padding=1)
 
         # # fusion g or g_b  for 1x1 conv
         # self.fusion_conv_g1 = nn.Conv2d(2, 16, 1)
@@ -136,6 +145,19 @@ class DualRoIHead(StandardRoIHead):
         # feats = prim_feats * rate[..., None, None] + aux_feats * (1 - rate[..., None, None])
 
 
+        #fusion j
+        prim_rate_feats = prim_feats.flatten(1)
+        aux_rate_feats = aux_feats.flatten(1)
+        rate = torch.cat([prim_rate_feats, aux_rate_feats], dim = 1)
+        for m in self.fusion_modules_j:
+            rate = m(rate)
+        feats = torch.cat([prim_feats * rate[..., None, None], aux_feats * (1 - rate[..., None, None])], dim=1)
+        feats = self.fusion_conv_j(feats)
+
+
+
+
+
         # # # fusion B
         # feats = torch.cat([prim_feats, aux_feats], dim=1)
         # for m in self.fusion_modules_b:
@@ -181,17 +203,17 @@ class DualRoIHead(StandardRoIHead):
         # feats = feats*(pool.unsqueeze(-1).unsqueeze(-1))
         # feats = self.fusion_conv_f(feats)
 
-        # fusion G
-        prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
-        aux_avgp = nn.AvgPool2d(prim_feats.size()[-1])(aux_feats)
-        feats = torch.cat([prim_avgp, aux_avgp], dim=-1).permute([0, 3, 2, 1])
-        f1 = self.fusion_conv_g1(feats)
-        f1 = self.fusion_relu(f1)
-        f1 = self.fusion_conv_g2(f1)
-        weight = nn.Softmax(dim=1)(f1)
-        weight = torch.cat([weight[:, 0], weight[:, 1]], dim=-1)
-        feats = torch.cat([prim_feats, aux_feats], dim=1) * weight.permute([0, 2, 1])[..., None]
-        feats = self.fusion_conv_g4(feats)
+        # # fusion G
+        # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats)
+        # aux_avgp = nn.AvgPool2d(prim_feats.size()[-1])(aux_feats)
+        # feats = torch.cat([prim_avgp, aux_avgp], dim=-1).permute([0, 3, 2, 1])
+        # f1 = self.fusion_conv_g1(feats)
+        # f1 = self.fusion_relu(f1)
+        # f1 = self.fusion_conv_g2(f1)
+        # weight = nn.Softmax(dim=1)(f1)
+        # weight = torch.cat([weight[:, 0], weight[:, 1]], dim=-1)
+        # feats = torch.cat([prim_feats, aux_feats], dim=1) * weight.permute([0, 2, 1])[..., None]
+        # feats = self.fusion_conv_g4(feats)
 
         # # fusion G_b
         # prim_avgp = nn.AvgPool2d(prim_feats.size()[-1])(prim_feats) + nn.MaxPool2d(prim_feats.size()[-1])(prim_feats)
