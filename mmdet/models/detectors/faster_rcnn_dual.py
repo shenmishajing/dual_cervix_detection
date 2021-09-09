@@ -159,6 +159,79 @@ class FasterRCNNDual(TwoStageDetector):
         """Test without augmentation."""
         assert self.roi_head_acid, 'Bbox head must be implemented.'
         acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
+
+
+
+
+
+
+        # # for visualization feature map
+        # import torch
+        # def featuremap_2_heatmap(feature_map):
+        #     assert isinstance(feature_map, torch.Tensor)
+        #     feature_map = feature_map.detach()
+        #     heatmap = feature_map[:, 0, :, :] * 0
+        #     for c in range(feature_map.shape[1]):
+        #         heatmap += feature_map[:, c, :, :]
+        #     heatmap = heatmap.cpu().numpy()
+        #     heatmap = np.mean(heatmap, axis=0)
+        #
+        #     heatmap = np.maximum(heatmap, 0)
+        #     heatmap /= np.max(heatmap)
+        #
+        #     return heatmap
+        #
+        #
+        # if img_metas[0]['filename'][0][:-6] == '02895805_2019-07-12':
+        #     import cv2
+        #     import numpy as np
+        #     import os
+        #     i = 0
+        #     for featuremap in acid_feats[-4][0]:
+        #         #featuremap = featuremap_2_heatmap(acid_feats[-3])  #for mean visua
+        #         print(featuremap.shape)
+        #         img = cv2.imread('data/cervix/img/02895805_2019-07-12_2.jpg')
+        #         featuremap = featuremap.data.cpu().numpy()  #for per feature visua
+        #         featuremap = np.maximum(featuremap, 0)      #for per feature visua
+        #         featuremap /= np.max(featuremap)            #for per feature visua
+        #
+        #         featuremap = cv2.resize(featuremap, (img.shape[1], img.shape[0]),interpolation=cv2.INTER_NEAREST)  # 将热力图的大小调整为与原始图像相同
+        #         heatmap = np.uint8(featuremap * 255) # 将热力图转换为RGB格式
+        #         heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)  # 将热力图应用于原始图像
+        #
+        #         superimposed_img = heatmap  * 0.4   + img*0.3  # 这里的0.4是热力图强度因子
+        #         cv2.imwrite(os.path.join('./testoutanaly/featuremaps/2xra_dual_wh_weigg_sharebrpn_layer-4_0.4_0.3',
+        #                               'featuremap_2_' + str(i) + '.png'), np.uint8(superimposed_img))  #for per feature visua
+        #         #cv2.imwrite(os.path.join('./testoutanaly/featuremaps/2xra_dual_wh_weigg_sharebrpn_layer-3_featuremap'+ '.png'), np.uint8(superimposed_img)) #for mean visua
+        #         i = i + 1
+        #         #break #for mean visua
+        #
+        #     # for iodine
+        #     i=0
+        #     for featuremap in iodine_feats[-4][0]:
+        #         #featuremap = featuremap_2_heatmap(acid_feats[-3])  #for mean visua
+        #         print(featuremap.shape)
+        #         img = cv2.imread('data/cervix/img/02895805_2019-07-12_3.jpg')
+        #         featuremap = featuremap.data.cpu().numpy()  #for per feature visua
+        #         featuremap = np.maximum(featuremap, 0)      #for per feature visua
+        #         featuremap /= np.max(featuremap)            #for per feature visua
+        #
+        #         featuremap = cv2.resize(featuremap, (img.shape[1], img.shape[0]),interpolation=cv2.INTER_NEAREST)  # 将热力图的大小调整为与原始图像相同
+        #         heatmap = np.uint8(featuremap * 255) # 将热力图转换为RGB格式
+        #         heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)  # 将热力图应用于原始图像
+        #
+        #         superimposed_img = heatmap  * 0.4   + img*0.3  # 这里的0.4是热力图强度因子
+        #         cv2.imwrite(os.path.join('./testoutanaly/featuremaps/2xra_dual_wh_weigg_sharebrpn_layer-4_0.4_0.3',
+        #                               'featuremap_3_' + str(i) + '.png'), np.uint8(superimposed_img))  #for per feature visua
+        #         #cv2.imwrite(os.path.join('./testoutanaly/featuremaps/2xra_dual_wh_weigg_sharebrpn_layer-3_featuremap'+ '.png'), np.uint8(superimposed_img)) #for mean visua
+        #         i = i + 1
+        #         #break #for mean visua
+
+
+
+
+
+
         if acid_proposals is None:
             acid_proposal_list = self.rpn_head.simple_test_rpn(acid_feats, img_metas)
         else:
