@@ -1,14 +1,11 @@
 checkpoint_config = dict(interval = 1)
 # yapf:disable
 log_config = dict(
-    interval = 50,
-    hooks = [
-        dict(type = 'TextLoggerHook'),
-        dict(type = 'WandbLoggerHook',
-             with_step = False,
-             init_kwargs = dict(project = 'dual_cervix_detection',
-                                name = 'default-project-name',
-                                tags = ['mmdetection']))])
+    interval=50,
+    hooks=[
+        dict(type='TextLoggerHook'),
+        dict(type='TensorboardLoggerHook')
+    ])
 # yapf:enable
 custom_hooks = [dict(type = 'NumClassCheckHook')]
 

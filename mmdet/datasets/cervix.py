@@ -51,15 +51,15 @@ import matplotlib.pyplot as plt
 class CervixDataset(CocoDataset):
     # ! 单、双模态dataset都要用到相同的评价，所以写了这个父类来完成指标评价部分
 
-    def __init__(self, debug_len = None, *args, **kwargs):
-        super(CervixDataset, self).__init__(*args, **kwargs)
-        self.debug_len = debug_len
-
-    def __len__(self):
-        if self.debug_len is None:
-            return super(CervixDataset, self).__len__()
-        else:
-            return self.debug_len
+    # def __init__(self, debug_len = None, *args, **kwargs):
+    #     super(CervixDataset, self).__init__(*args, **kwargs)
+    #     self.debug_len = debug_len
+    #
+    # def __len__(self):
+    #     if self.debug_len is None:
+    #         return super(CervixDataset, self).__len__()
+    #     else:
+    #         return self.debug_len
 
     def convert_dets_format(self, dets):
         """ 
@@ -1052,10 +1052,24 @@ class SingleCervixDataset(CervixDataset):
 
     def __init__(self,
                  img_type,
-                 classes = None,
-                 *args, **kwargs):
-        super(SingleCervixDataset, self).__init__(classes = classes,
-                                                  *args, **kwargs)
+                 ann_file,
+                 pipeline,
+                 classes=None,
+                 data_root=None,
+                 img_prefix='',
+                 seg_prefix=None,
+                 proposal_file=None,
+                 test_mode=False,
+                 filter_empty_gt=True):
+        super(SingleCervixDataset, self).__init__(ann_file,
+                                                  pipeline,
+                                                  classes,
+                                                  data_root,
+                                                  img_prefix,
+                                                  seg_prefix,
+                                                  proposal_file,
+                                                  test_mode,
+                                                  filter_empty_gt)
         # ! img_type 取值为acid, iodine，用来加到评估指标的命名中
         self.img_type = img_type
         self._iou_threshs = list(range(50, 100, 5))

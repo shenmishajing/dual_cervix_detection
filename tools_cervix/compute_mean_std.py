@@ -86,12 +86,12 @@ def stat_mean_std(case_id_path, img_dir):
 if __name__ == '__main__':
     # sil_total_case_id_path = "/data/luochunhua/cervix/cervix_det_data/data_split/total.txt"
     sil_train_case_id_path = "/data/luochunhua/cervix/cervix_det_data/data_split/sil/train.txt"
-    img_dir = "/data/luochunhua/cervix/cervix_det_data/img"
+    img_dir = "/data2/hhp/project/cervix/dual_cervix_detection/data/cervix_project/detection/img"
     # print("sil train")
     # stat_mean_std(sil_train_case_id_path, img_dir)
 
     print("hsil train")
-    hsil_train_case_id_path = "/data/luochunhua/cervix/cervix_det_data/data_split/hsil/train.txt"
+    hsil_train_case_id_path = "/data2/hhp/project/cervix/dual_cervix_detection/data/cervix_project/detection/train.txt"
     stat_mean_std(hsil_train_case_id_path, img_dir)
 
 
@@ -101,8 +101,8 @@ if __name__ == '__main__':
 # Iodine mean tensor([0.5271, 0.3497, 0.2480])
 # Iodine std tensor([0.2390, 0.2367, 0.2193])
 
-#! hsil
-Acid mean tensor([0.5626, 0.4001, 0.3825])
-Acid std tensor([0.1672, 0.1565, 0.1597])
-Iodine mean tensor([0.5225, 0.3447, 0.2389])
-Iodine std tensor([0.2398, 0.2336, 0.2152])
+# #! hsil
+# Acid mean tensor([0.5626, 0.4001, 0.3825])
+# Acid std tensor([0.1672, 0.1565, 0.1597])
+# Iodine mean tensor([0.5225, 0.3447, 0.2389])
+# Iodine std tensor([0.2398, 0.2336, 0.2152])

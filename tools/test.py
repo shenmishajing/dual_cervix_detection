@@ -257,13 +257,13 @@ def main():
             metric_iodine = []
             import numpy as np
             for kk in range(len(dic_acid)):
-                metric_acid.append(metric[dic_acid[kk]])
+                #metric_acid.append(metric[dic_acid[kk]])
                 metric_iodine.append(metric[dic_iodine[kk]])
             print('metric_acid:', metric_acid)
             print('metric_iodine:', metric_iodine)
-            # main_ready_detail = pd.DataFrame([metric_acid, metric_iodine], columns=dic_acid)
-            main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
-            main_ready_detail.to_excel('./acid_iodine_result.xlsx')
+            #main_ready_detail = pd.DataFrame(metric_iodine, columns=dic_iodine)
+            #main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
+            #main_ready_detail.to_excel('./acid_iodine_result.xlsx')
 
 
 if __name__ == '__main__':
