@@ -24,12 +24,19 @@ def parse_args():
         description='MMDet test (and eval) a model')
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
+
     parser.add_argument(
-        '--visualize-dir', help='directory where gt and pred boxes visualized images will be saved')
+        '--visualize-dir', help='directory where gt and pred boxes visualized images will be saved')  # add for visual pred and gt by hhp
     parser.add_argument(
         '--visualize-num-match-gt',
         action='store_true',
-        help='only visualize num of det bboxes as ground truth')
+        help='only visualize num of det bboxes as ground truth') ## add for visual pred and gt by hhp
+    parser.add_argument(
+        '--visualize-score-thr',
+        type=float,
+        default=0.3,
+        help='score threshold (default: 0.3)') ## add for visual pred and gt by hhp
+
     parser.add_argument(
         '--work-dir',
         help='the directory to save the file containing evaluation metrics')
