@@ -8,7 +8,7 @@ from mmdet.datasets import build_dataset, get_loading_pipeline
 from mmdet.core.visualization import imshow_gt_det_bboxes, imshow_det_bboxes
 
 show_gt_det_bbox_kwargs = dict(gt_bbox_color = 'green', gt_text_color = 'white', det_bbox_color = 'red', det_text_color = 'white',
-                               thickness = 5, font_size = 60, show = False)
+                               thickness = 2, font_size = 20, show = False)
 show_gt_bbox_kwargs = dict(bbox_color = show_gt_det_bbox_kwargs['gt_bbox_color'],
                            text_color = show_gt_det_bbox_kwargs['gt_text_color'],
                            **{k: v for k, v in show_gt_det_bbox_kwargs.items() if 'color' not in k})
@@ -55,7 +55,10 @@ def visualize_bboxes(filename, img, gt_bboxes, gt_labels, class_names, show_dir,
         visualize_num = len(gt_bboxes)
         if not visualize_num_match_gt:
             visualize_num += random.randint(-3, 3)
-        result = get_topk_results(result, visualize_num)
+        if len(result)==1:
+            result = get_topk_results(result, visualize_num)
+        else:
+            result = [get_topk_results([result[leni]], visualize_num)[0] for leni in range(len(result))]
         imshow_gt_det_bboxes(
             img,
             dict(gt_bboxes = gt_bboxes, gt_labels = gt_labels),

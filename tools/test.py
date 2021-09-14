@@ -25,6 +25,12 @@ def parse_args():
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
     parser.add_argument(
+        '--visualize-dir', help='directory where gt and pred boxes visualized images will be saved')
+    parser.add_argument(
+        '--visualize-num-match-gt',
+        action='store_true',
+        help='only visualize num of det bboxes as ground truth')
+    parser.add_argument(
         '--work-dir',
         help='the directory to save the file containing evaluation metrics')
     parser.add_argument('--out', help='output result file in pickle format')

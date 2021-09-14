@@ -107,6 +107,9 @@ def get_loading_pipeline(pipeline):
         if obj_cls is not None and obj_cls in (LoadDualCervixImageFromFile,
                                                LoadDualCervixAnnotations):
             loading_pipeline_cfg.append(cfg)
+        elif obj_cls is not None and obj_cls in (LoadImageFromFile, LoadAnnotations):
+            loading_pipeline_cfg.append(cfg)
+
     assert len(loading_pipeline_cfg) == 2, \
         'The data pipeline in your config file must include ' \
         'loading image and annotations related pipeline.'
