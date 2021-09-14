@@ -14,8 +14,9 @@ from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
 
 from mmdet.apis import multi_gpu_test, single_gpu_test
 from mmdet.datasets import (build_dataloader, build_dataset,
-                            replace_ImageToTensor)
+                            replace_ImageToTensor, get_loading_pipeline)
 from mmdet.models import build_detector
+from tools.analysis_tools.visualize_results import visualize_results
 
 
 def parse_args():
@@ -264,6 +265,13 @@ def main():
             #main_ready_detail = pd.DataFrame(metric_iodine, columns=dic_iodine)
             #main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
             #main_ready_detail.to_excel('./acid_iodine_result.xlsx')
+
+            if args.visualize_dir:
+                cfg.data.test.pipeline = get_loading_pipeline(cfg.data.train.pipeline)
+                dataset = build_dataset(cfg.data.test)
+                suffix = '_'.join(args.checkpoint.split('/')[-2:]).split('.')[0]
+                visualize_results(dataset, outputs, show_dir=args.visualize_dir, score_thr=args.visualize_score_thr,
+                                  visualize_num_match_gt=args.visualize_num_match_gt, suffix=suffix)
 
 
 if __name__ == '__main__':
