@@ -5,7 +5,7 @@ _base_ = [
     './iodine_base.py'
 ]
 
-model = dict(roi_head=dict(bbox_head=dict(num_classes=2)))
+model = dict(roi_head=dict(bbox_head=dict(num_classes=1)))
 
 optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 

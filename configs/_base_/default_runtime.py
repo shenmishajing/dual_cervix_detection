@@ -1,5 +1,5 @@
 checkpoint_config = dict(interval = 1)
-# yapf:disable
+## yapf:disable
 log_config = dict(
     interval=50,
     hooks=[
