@@ -12,16 +12,20 @@ optimizer = dict(type='SGD', lr=0.0025, momentum=0.9, weight_decay=0.0001)
 
 classes = ("hsil",)
 
-
+data_root = 'data/cervix_project/detection/'
 data = dict(
     train=dict(
-        classes=classes),
+        classes=classes,
+        ann_file=data_root + 'annos_hsil/train_iodine.json'),
     val=dict(
-        classes=classes
+        classes=classes,
+        ann_file=data_root + 'annos_hsil/val_iodine.json'
         ),
     test=dict(
-        classes=classes
+        classes=classes,
+        ann_file=data_root + 'annos_hsil/test_iodine.json'
         ))
+
 
 
 
