@@ -25,7 +25,7 @@ def compare_pkl():
 
     pickle_file_list = []
     pklfile_proj=open('/data/lxc/Cervix/detection/annos/anno.pkl',"rb")
-    pklfile_paper = open("/data/luochunhua/cervix/cervix_det_data/anno/paper_annos.pkl", "rb")
+    pklfile_paper = open("/data/luochunhua/cervix/cervix_det_data/anno/paper_annos.pkl", "rb")  #total.pkl
     pickle_proj_data=pickle.load(pklfile_proj)
     pickle_proj_key = list(pickle_proj_data.keys())
     pickle_paper_data = pickle.load(pklfile_paper)

@@ -290,6 +290,7 @@ def main():
 if __name__ == '__main__':
     main()
 
+    #只绘制pred
     # / data2 / hhp / model / cervix / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn.py
     # / data2 / hhp / model / cervix / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn / epoch_13.pth
     # --eval
@@ -300,3 +301,15 @@ if __name__ == '__main__':
     # ./ testoutanaly / visua / faster_rcnn_dual_r50_fpn_2xra_dual_wh_weigg1x1_sharebrpn_e13
     # --show - score - thr
     # 0.8
+
+
+    #绘制gt和pred在同一图中
+    # / data2 / hhp / model / cervix_project / faster_rcnn_r50_fpn_2x_iodine / faster_rcnn_r50_fpn_2x_iodine.py
+    # / data2 / hhp / model / cervix_project / faster_rcnn_r50_fpn_2x_iodine / epoch_10.pth
+    # --eval
+    # "bbox"
+    # --out
+    # ./ project_result / pkl / faster_rcnn_r50_fpn_2x_iodine_e10.pkl
+    # --visualize - dir
+    # ./ project_result / visua / faster_rcnn_r50_fpn_2x_iodine_e10 /
+    # --visualize - num - match - gt
