@@ -169,8 +169,9 @@ def convert_pickle_to_cervix_mmdet(acid=True):
     #本函数根据划分好的训练、验证、测试数据集txt文件，读取pickle，转化成mmdetection可使用的coco训练和测试数据json格式。
     pjoin = os.path.join
     dst_data_split_dir ='data/cervix_project/detection/'
-    src_anno_path = '/data/lxc/Cervix/detection/annos/anno.pkl'
-    dst_single_json_dir = 'data/cervix_project/detection/annos/'
+    #src_anno_path = '/data/lxc/Cervix/detection/annos/anno.pkl'
+    src_anno_path = "/data/luochunhua/cervix/cervix_det_data/anno/total.pkl"
+    dst_single_json_dir = 'data/cervix_project/detection/annos_frompaper/'
 
     sil_txt_path = pjoin(dst_data_split_dir, "all_feasible_data.txt")
     train_txt_path = pjoin(dst_data_split_dir, "train.txt")
@@ -220,7 +221,7 @@ def convert_pickle_to_cervix_mmdet(acid=True):
                     continue
 
                 category_id = label_map[x["label"]]
-                x1, y1, x2, y2 = x["box"]
+                x1, y1, x2, y2 = x["bbox"]
                 coco_annotations.append({
                     "segmentation": [],  ###x["segm"].tolist()
                     "area": (x2 - x1) * (y2 - y1),
