@@ -5,6 +5,7 @@ from PIL import Image
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import json
+import mmcv
 
 
 def iou(box1,box2):
@@ -39,7 +40,8 @@ def trans(box1,box2):
 
 def compare_pkl():
     #因前期数据中存在多个pickle文件，且不同文件训练效果差异大，因此需要对比标注的差异性。
-
+    img_oripath='/data/lxc/Cervix/cervix_resize_600_segmentation/Images/'
+    img_out_path = 'project_result/datavisua/'
 
     pklfile_proj=open('/data/lxc/Cervix/detection/annos/anno.pkl',"rb")
     pklfile_paper = open("/data/luochunhua/cervix/cervix_det_data/anno/total.pkl", "rb")  #total.pkl，paper_annos.pkl
@@ -102,12 +104,19 @@ def compare_pkl():
     num11 = 0
     sumiou = 0
     sumioun1 = 0
+    num_shap = 0
     for j in pickle_proj_key:
         numall +=1
         if j in pickle_paper_key:
             num2 +=1
             annos_proj_data = pickle_proj_data[j]['annos']
             annos_paper_data = pickle_paper_data[j]['annos']
+            annos_proj_shape = pickle_proj_data[j]['shape']
+            annos_paper_shape = pickle_paper_data[j]['shape']
+
+            if annos_proj_shape[0]==annos_paper_shape[0] and annos_proj_shape[1]==annos_paper_shape[1]:
+                num_shap += 1
+
             if annos_proj_data != [] and annos_paper_data !=[]:
                 num3 += 1
 
@@ -117,22 +126,34 @@ def compare_pkl():
                 bboxs_paper = [i[1] for i in bboxs_paper]
 
 
+                img_path = os.path.join(img_oripath,j+'.jpg')
+                img = mmcv.imread(img_path)
+                img_ = np.copy(img)
 
 
                 if len(bboxs_proj)==len(bboxs_paper):
                     num4 += 1
                 else:
                     num5 += 1
-
+                change_im = 0
                 for id in range(min(len(bboxs_proj),len(bboxs_paper))):
+
                     num6 += 1
                     #a = trans(bboxs_proj[id], bboxs_paper[id])
                     a = (bboxs_proj[id], bboxs_paper[id])
                     IOU = iou(a[0], a[1])
                     sumiou += IOU
-                    if int(IOU) !=1:
+                    if int(IOU) !=1: #int(IOU) !=1:    ;  IOU <0.9;;
+                        change_im += 1
                         num11 +=1
                         sumioun1 += IOU
+
+                        #img_ = mmcv.imshow_bboxes(img_, np.array([np.array(bboxs_proj[id])]), colors=['green'], thickness=3,show=False)
+                        #img_ = mmcv.imshow_bboxes(img_, np.array([np.array(bboxs_paper[id])]), colors=['red'], thickness=3, show=False)
+                #if change_im>0:
+                    #mmcv.imwrite(img_, os.path.join(img_out_path, j + '.jpg'))
+
+
 
 
         else:
@@ -143,16 +164,18 @@ def compare_pkl():
                 num10 += len(annos_proj_data)
 
 
-    print('all img in pkl proj:',numall)
-    print('all img in pkl proj and paper:', num2)
-    print('all img in pkl proj and paper and have annos:', num3)
-    print('all img in pkl proj and paper and have same len annos:', num4)
-    print('all img in pkl proj and paper and have  not same len annos:', num5)
-    print('all img in pkl proj and paper and have annos and have least bbox:', num6, num11)
-    print('average iou:',sumiou/num6) #260多个匹配框区域完全不重合
-    print('average iou:', sumioun1 / num6) #标注变过的框的平均IOU
+    print('all img in pkl proj:',numall) #45246
+    print('all img in pkl proj and paper:', num2) #27826
+    print('all img in pkl proj and paper and have annos:', num3) #27826
+    print('all img in pkl proj and paper and have same len annos:', num4) #27369
+    print('all img in pkl proj and paper and have  not same len annos:', num5) #457
+    print('all img in pkl proj and paper and have annos and have least bbox:', num6, num11) #54334---1:41315---0.9:1409
+    print('average iou:',sumiou/num6) #260多个匹配框区域完全不重合 #0.97
+    print('average iou:', sumioun1 / num11) #标注变过的框的平均IOU  #1:0.96---0.9:0.6275
 
-    print('annos_proj_data not in paper annos for none and leng', num9, num10)
+    print('annos_proj_data not in paper annos for none and leng', num9, num10) #16522 2110
+
+    print('number of same img have same shape:',num_shap) #27826
 
 
 
