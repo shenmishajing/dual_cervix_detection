@@ -37,6 +37,7 @@ from .yolo import YOLOV3
 from .yolof import YOLOF
 from .sparse_reppoints_detector import SparseRepPointsDetector
 from .dual_cervix_faster import FasterPrimAuxDetector, FasterPrimAuxAuxOffsetLossDualDetector
+from .atss_fusion import ATSSFusion
 
 __all__ = [
     'ATSS', 'ATSSDual', 'BaseDetector', 'SingleStageDetector', 'TwoStageDetector', 'RPN',
@@ -46,5 +47,5 @@ __all__ = [
     'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA', 'YOLOV3', 'YOLACT',
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SparseRepPointsDetector', 'SCNet',
     'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'FasterRCNNDual',
-    'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector'
+    'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector','ATSSFusion'
 ]

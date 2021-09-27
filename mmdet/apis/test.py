@@ -25,49 +25,116 @@ def single_gpu_test(model,
     prog_bar = mmcv.ProgressBar(len(dataset))
 
     prim = hasattr(dataset, "prim")
+    fusion = hasattr(dataset, "fusion")
     
-    if not prim: 
-        for i, data in enumerate(data_loader):
-            with torch.no_grad():
-                result = model(return_loss=False, rescale=True, **data)
+    if not prim:
+        if not fusion:
+            for i, data in enumerate(data_loader):
+                with torch.no_grad():
+                    result = model(return_loss=False, rescale=True, **data)
 
-            batch_size = len(result)
-            if show or out_dir:
-                if batch_size == 1 and isinstance(data['img'][0], torch.Tensor):
-                    img_tensor = data['img'][0]
-                else:
-                    img_tensor = data['img'][0].data[0]
-                img_metas = data['img_metas'][0].data[0]
-                imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
-                assert len(imgs) == len(img_metas)
-
-                for i, (img, img_meta) in enumerate(zip(imgs, img_metas)):
-                    h, w, _ = img_meta['img_shape']
-                    img_show = img[:h, :w, :]
-
-                    ori_h, ori_w = img_meta['ori_shape'][:-1]
-                    img_show = mmcv.imresize(img_show, (ori_w, ori_h))
-
-                    if out_dir:
-                        out_file = osp.join(out_dir, img_meta['ori_filename'])
+                batch_size = len(result)
+                if show or out_dir:
+                    if batch_size == 1 and isinstance(data['img'][0], torch.Tensor):
+                        img_tensor = data['img'][0]
                     else:
-                        out_file = None
+                        img_tensor = data['img'][0].data[0]
+                    img_metas = data['img_metas'][0].data[0]
+                    imgs = tensor2imgs(img_tensor, **img_metas[0]['img_norm_cfg'])
+                    assert len(imgs) == len(img_metas)
 
-                    model.module.show_result(
-                        img_show,
-                        result[i],
-                        show=show,
-                        out_file=out_file,
-                        score_thr=show_score_thr)
+                    for i, (img, img_meta) in enumerate(zip(imgs, img_metas)):
+                        h, w, _ = img_meta['img_shape']
+                        img_show = img[:h, :w, :]
 
-            # encode mask results
-            if isinstance(result[0], tuple):
-                result = [(bbox_results, encode_mask_results(mask_results))
-                        for bbox_results, mask_results in result]
-            results.extend(result)
+                        ori_h, ori_w = img_meta['ori_shape'][:-1]
+                        img_show = mmcv.imresize(img_show, (ori_w, ori_h))
 
-            for _ in range(batch_size):
-                prog_bar.update()
+                        if out_dir:
+                            out_file = osp.join(out_dir, img_meta['ori_filename'])
+                        else:
+                            out_file = None
+
+                        model.module.show_result(
+                            img_show,
+                            result[i],
+                            show=show,
+                            out_file=out_file,
+                            score_thr=show_score_thr)
+
+                # encode mask results
+                if isinstance(result[0], tuple):
+                    result = [(bbox_results, encode_mask_results(mask_results))
+                            for bbox_results, mask_results in result]
+                results.extend(result)
+
+                for _ in range(batch_size):
+                    prog_bar.update()
+        else:
+            for i, data in enumerate(data_loader):
+                with torch.no_grad():
+                    result = model(return_loss=False, rescale=True, **data)
+
+                batch_size = len(result)
+                if show or out_dir:
+                    if batch_size == 1 and isinstance(data['iodine_img'][0], torch.Tensor):
+                        if hasattr(dataset, "img_type") =="iodine":
+                            img_tensor = data['iodine_img'][0]
+                        else:
+                            img_tensor = data['acid_img'][0]
+                    else:
+                        if hasattr(dataset, "img_type") == "iodine":
+                            img_tensor = data['iodine_img'][0].data[0]
+                        else:
+                            img_tensor = data['acid_img'][0].data[0]
+
+                    img_metas = data['img_metas'][0].data[0]
+                    if hasattr(dataset, "img_type") == "acid":
+                        imgs = tensor2imgs(img_tensor,
+                                                mean=img_metas[0]["img_norm_cfg"]["acid_mean"],
+                                                std=img_metas[0]["img_norm_cfg"]["acid_std"],
+                                                to_rgb=img_metas[0]["img_norm_cfg"]["to_rgb"])
+                    else:
+                        imgs = tensor2imgs(img_tensor,
+                                                  mean=img_metas[0]["img_norm_cfg"]["iodine_mean"],
+                                                  std=img_metas[0]["img_norm_cfg"]["iodine_std"],
+                                                  to_rgb=img_metas[0]["img_norm_cfg"]["to_rgb"])
+
+
+                    assert len(imgs) == len(img_metas)
+
+                    for j, (img, img_meta) in enumerate(zip(imgs, img_metas)):
+                        h, w, _ = img_meta['img_shape']
+                        img_show = img[:h, :w, :]
+
+                        ori_h, ori_w = img_meta['ori_shape'][:-1]
+                        img_show = mmcv.imresize(img_show, (ori_w, ori_h))
+
+                        if out_dir:
+                            if hasattr(dataset, "img_type") == "acid":
+                                out_file = osp.join(out_dir, img_meta['ori_filename'][0])
+                            else:
+                                out_file = osp.join(out_dir, img_meta["ori_filename"][1])
+                        else:
+                            out_file = None
+
+
+
+                        model.module.show_result(
+                            img_show,
+                            result[j],
+                            show=show,
+                            out_file=out_file,
+                            score_thr=show_score_thr)
+
+                # encode mask results
+                if isinstance(result[0], tuple):
+                    result = [(bbox_results, encode_mask_results(mask_results))
+                              for bbox_results, mask_results in result]
+                results.extend(result)
+
+                for _ in range(batch_size):
+                    prog_bar.update()
     else:
         assert show == False, "show must be False when dual det"
         #! dual det
