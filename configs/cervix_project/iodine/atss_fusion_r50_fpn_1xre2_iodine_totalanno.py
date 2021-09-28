@@ -36,7 +36,6 @@ optimizer = dict(type='SGD', lr=0.00125, momentum=0.9, weight_decay=0.0001)
 
 
 
-
 data_root = 'data/cervix_project/detection/'
 data = dict(
     train=dict(
@@ -56,15 +55,13 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=0.001,
-    step=[8, 11, 15])
+    step=[6, 9, 13])
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 
 
 # offset size 7
-#offset 乘以shape
+#offset 不乘以shape
 #shift之后的图size为0时用原图替代。
-
-
 
 
 

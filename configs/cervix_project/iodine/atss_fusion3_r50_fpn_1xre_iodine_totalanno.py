@@ -61,8 +61,8 @@ runner = dict(type='EpochBasedRunner', max_epochs=24)
 
 
 # offset size 7
-#offset 乘以shape
-#shift之后的图size为0时用原图替代。
+#offset 不乘以shape
+#shift之后的图size为0时不用原图替代。
 
 
 

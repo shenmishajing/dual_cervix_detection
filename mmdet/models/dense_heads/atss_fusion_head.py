@@ -74,7 +74,7 @@ class ATSSFusionHead(ATSSHead):
         x = []
         for lev in range(len(acid_feats)):
             acid_offsets = self._offset_forward(torch.cat([acid_feats[lev], iodine_feats[lev]], dim=1))  ### for fusion 1 and fusion 2
-            #acid_offsets = acid_offsets * acid_offsets.new_tensor(img_metas[0]['pad_shape'][:2])  ### only for fusion 2
+            #acid_offsets = acid_offsets * acid_offsets.new_tensor(acid_feats[lev].size()[2:])  ### only for fusion 2
             if acid_feats[0].size()[0] ==2:
                 acid_feats_lev_0 = acid_feats[lev][0][:,
                                    int(acid_offsets[0][0]):int(acid_feats[lev].size()[2] + acid_offsets[0][0]),
@@ -82,6 +82,7 @@ class ATSSFusionHead(ATSSHead):
                 acid_feats_lev_1 = acid_feats[lev][1][:,
                                    int(acid_offsets[1][0]):int(acid_feats[lev].size()[2] + acid_offsets[1][0]),
                                    int(acid_offsets[1][1]):int(acid_feats[lev].size()[3] + acid_offsets[1][1])]
+                # 裁出的图size 为0 时用原图替代
                 if acid_feats_lev_0.size()[1]==0 or acid_feats_lev_0.size()[2]==0:
                     acid_feats_lev_0 = acid_feats[lev][0]
                 if acid_feats_lev_1.size()[1]==0 or acid_feats_lev_1.size()[2]==0:
@@ -99,6 +100,7 @@ class ATSSFusionHead(ATSSHead):
                 acid_feats_lev_0 = acid_feats[lev][0][:,
                                    int(acid_offsets[0][0]):int(acid_feats[lev].size()[2] + acid_offsets[0][0]),
                                    int(acid_offsets[0][1]):int(acid_feats[lev].size()[3] + acid_offsets[0][1])]
+                # 裁出的图size 为0 时用原图替代
                 if acid_feats_lev_0.size()[1]==0 or acid_feats_lev_0.size()[2]==0:
                     acid_feats_lev_0 = acid_feats[lev][0]
 
