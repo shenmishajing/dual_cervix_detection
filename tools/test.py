@@ -252,21 +252,8 @@ def main():
 
 
             # added to test by hhp
-            dic_acid = ['AP_Top5_acid', 'AP50_Top5_acid', 'AP75_Top5_acid', 'AP_Top10_acid', 'AP50_Top10_acid',
-                        'AP75_Top10_acid', 'AR_Top5_acid', 'AR_Top10_acid',
-                        'FROC50_acid', 'Recall50_fp_rate0.125_acid', 'Recall50_fp_rate0.25_acid',
-                        'Recall50_fp_rate0.5_acid', 'Recall50_fp_rate1_acid',
-                        'Recall50_fp_rate2_acid', 'Recall50_fp_rate4_acid', 'Recall50_fp_rate8_acid',
-                        'iRecall75_Top1_acid', 'iRecall75_Top2_acid',
-                        'iRecall75_Top3_acid']
-            dic_iodine = ['AP_Top5_iodine', 'AP50_Top5_iodine', 'AP75_Top5_iodine', 'AP_Top10_iodine',
-                          'AP50_Top10_iodine', 'AP75_Top10_iodine', 'AR_Top5_iodine',
-                          'AR_Top10_iodine', 'FROC50_iodine', 'Recall50_fp_rate0.125_iodine',
-                          'Recall50_fp_rate0.25_iodine', 'Recall50_fp_rate0.5_iodine',
-                          'Recall50_fp_rate1_iodine',
-                          'Recall50_fp_rate2_iodine', 'Recall50_fp_rate4_iodine', 'Recall50_fp_rate8_iodine',
-                          'iRecall75_Top1_iodine', 'iRecall75_Top2_iodine',
-                          'iRecall75_Top3_iodine']
+            dic_acid = ['AP50_Top5_acid', 'AP75_Top5_acid', 'AR_Top5_acid', 'iRecall50_Top5_acid', 'iRecall75_Top5_acid']
+            dic_iodine = ['AP50_Top5_iodine', 'AP75_Top5_iodine', 'AR_Top5_iodine', 'iRecall50_Top5_iodine', 'iRecall75_Top5_iodine']
             metric_acid = []
             metric_iodine = []
             import numpy as np
@@ -275,9 +262,9 @@ def main():
                 metric_iodine.append(metric[dic_iodine[kk]])
             print('metric_acid:', metric_acid)
             print('metric_iodine:', metric_iodine)
-            #main_ready_detail = pd.DataFrame(metric_iodine, columns=dic_iodine)
+            main_ready_detail = pd.DataFrame(np.array(metric_iodine).reshape((1, -1)), columns=dic_iodine)
             #main_ready_detail = pd.DataFrame(np.array(metric_acid + metric_iodine).reshape((1, -1)), columns=dic_acid +dic_iodine)
-            #main_ready_detail.to_excel('./acid_iodine_result.xlsx')
+            main_ready_detail.to_excel('./acid_iodine_result.xlsx')
 
             if args.visualize_dir:
                 cfg.data.test.pipeline = get_loading_pipeline(cfg.data.train.pipeline)

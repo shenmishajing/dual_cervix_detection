@@ -28,8 +28,8 @@ lr_config = dict(
     step=[8, 11, 15])
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 
-
-
-
 # mixup mix_ratio = 0.5
+#resume configs/cervix_project/iodine/atss_mixup_r50_fpn_1xre_iodine_totalanno/epoch_12.pth,不使用mixup
+
+
 

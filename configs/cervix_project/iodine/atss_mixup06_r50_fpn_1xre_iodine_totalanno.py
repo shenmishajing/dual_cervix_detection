@@ -31,5 +31,5 @@ runner = dict(type='EpochBasedRunner', max_epochs=24)
 
 
 
-# mixup mix_ratio = 0.5
+# mixup mix_ratio = 0.6
 
