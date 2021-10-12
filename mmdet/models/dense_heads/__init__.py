@@ -36,6 +36,9 @@ from .yolo_head import YOLOV3Head
 from .yolof_head import YOLOFHead
 from .sparse_reppoints_head import SparseRepPointsHead
 from .atss_fusion_head import ATSSFusionHead
+from .atss_fusion_iodine_head import ATSSFusionIodineHead
+from .atss_middle_fusion_head import ATSSMiddleFusionHead
+from .atss_middle_fusion_channel_attention_head import ATSSMiddleFusionChannelAttentionHead
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',
@@ -46,6 +49,6 @@ __all__ = [
     'YOLACTSegmHead', 'YOLACTProtonet', 'YOLOV3Head', 'PAAHead',
     'SABLRetinaHead', 'CentripetalHead', 'VFNetHead', 'StageCascadeRPNHead',
     'CascadeRPNHead', 'EmbeddingRPNHead', 'LDHead', 'CascadeRPNHead',
-    'AutoAssignHead', 'DETRHead', 'YOLOFHead', 'DeformableDETRHead','ATSSFusionHead',
-    'CenterNetHead'
+    'AutoAssignHead', 'DETRHead', 'YOLOFHead', 'DeformableDETRHead','ATSSFusionHead','ATSSFusionIodineHead',
+    'CenterNetHead','ATSSMiddleFusionHead','ATSSMiddleFusionChannelAttentionHead'
 ]

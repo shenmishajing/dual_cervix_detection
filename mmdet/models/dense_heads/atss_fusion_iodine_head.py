@@ -7,7 +7,7 @@ from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize
 import numpy as np
 
 @HEADS.register_module()
-class ATSSFusionHead(ATSSHead):
+class ATSSFusionIodineHead(ATSSHead):
     """Simplest base roi head including one bbox head and one mask head."""
 
     def __init__(self,
@@ -20,7 +20,7 @@ class ATSSFusionHead(ATSSHead):
                  init_cfg=dict(type='Normal',layer='Conv2d',std=0.01,override=dict(type='Normal',name='atss_cls',std=0.01,bias_prob=0.01)),
                  enlarge=False,
                  **kwargs):
-        super(ATSSFusionHead, self).__init__(num_classes=num_classes,
+        super(ATSSFusionIodineHead, self).__init__(num_classes=num_classes,
                  in_channels=in_channels,
                  stacked_convs=stacked_convs,
                  conv_cfg=conv_cfg,
@@ -145,7 +145,7 @@ class ATSSFusionHead(ATSSHead):
                 losses: (dict[str, Tensor]): A dictionary of loss components.
                 proposal_list (list[Tensor]): Proposals of each image.
         """
-        x = self.fusion_befor(acid_feats, iodine_feats, img_metas)
+        x = self.fusion_befor(iodine_feats, acid_feats, img_metas)  #将iodine 的特征融合进acid去
 
         outs = self(x)
         if gt_labels is None:
@@ -200,7 +200,7 @@ class ATSSFusionHead(ATSSHead):
                 with shape (n,)
         """
 
-        feats = self.fusion_befor(acid_feats, iodine_feats, img_metas)
+        feats = self.fusion_befor(iodine_feats, acid_feats, img_metas)
 
         outs = self(feats)
         results_list = self.get_bboxes(*outs, img_metas, rescale=rescale)

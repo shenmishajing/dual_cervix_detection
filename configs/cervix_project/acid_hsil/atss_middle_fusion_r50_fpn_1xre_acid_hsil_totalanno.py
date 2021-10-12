@@ -2,12 +2,12 @@ _base_ = [
     '../../_base_/models/atss_r50_fpn.py',
     '../../_base_/schedules/schedule_1x.py',
     '../../_base_/default_runtime.py',
-    './iodine_hsil_fusion_base.py'
+    './acid_hsil_fusion_base.py'
 ]
 
 model = dict(type='ATSSFusion',
              bbox_head=dict(
-        type='ATSSFusionHead',
+        type='ATSSMiddleFusionHead',
         num_classes=1,
         in_channels=256,
         stacked_convs=4,
@@ -61,9 +61,6 @@ lr_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 
 
-# offset size 7
-#offset 乘以shape
-#shift之后的图size为0时用原图替代。
 
 
 

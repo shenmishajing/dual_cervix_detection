@@ -46,8 +46,12 @@ class ATSSFusion(SingleStageDetector):
 
 
         acid_feats, iodine_feats = self.extract_feat(acid_img, iodine_img)
-        losses = self.bbox_head.forward_train(acid_feats, iodine_feats, img_metas, iodine_gt_bboxes,
+        if iodine_gt_bboxes is not None and iodine_gt_labels is not None:
+            losses = self.bbox_head.forward_train(acid_feats, iodine_feats, img_metas, iodine_gt_bboxes,
                                               iodine_gt_labels, iodine_gt_bboxes_ignore)
+        else:
+            losses = self.bbox_head.forward_train(acid_feats, iodine_feats, img_metas, acid_gt_bboxes,
+                                                  acid_gt_labels, acid_gt_bboxes_ignore)
         return losses
 
 

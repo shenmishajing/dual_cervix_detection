@@ -209,7 +209,8 @@ def convert_pickle_to_cervix_mmdet(acid=True):
             case_id += "_2" if acid else "_3"
             anno = src_annos[case_id]
 
-            # if 2 not in [x["label"] for x in anno["annos"]]: #判断整张图中是否存在hsil,若不存在，用于提取含hsil框的数据
+            # case_id_cp =  case_id[:-2]+ "_3" if acid else case_id[:-2]+ "_2" #对应的另一个模态
+            # if 2 not in [x["label"] for x in anno["annos"]] or 2 not in [y["label"] for y in src_annos[case_id_cp]["annos"]]: #判断整张图中是否存在hsil,若不存在，用于提取含hsil框的数据
             #     continue
 
 
@@ -221,7 +222,7 @@ def convert_pickle_to_cervix_mmdet(acid=True):
             })
 
             for x in anno["annos"]:
-                if x["label"] == 3:  #if x["label"] != 2:  #默认用于提取非炎症的数据，还可选择只提取hsil框
+                if x["label"] == 3:  #默认if x["label"] == 3:   可以if x["label"] != 2:  #默认用于提取非炎症的数据，还可选择只提取hsil框
                     continue
 
                 category_id = label_map[x["label"]]

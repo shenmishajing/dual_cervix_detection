@@ -2,12 +2,12 @@ _base_ = [
     '../../_base_/models/atss_r50_fpn.py',
     '../../_base_/schedules/schedule_1x.py',
     '../../_base_/default_runtime.py',
-    './iodine_hsil_fusion_base.py'
+    './acid_hsil_fusion_base.py'
 ]
 
 model = dict(type='ATSSFusion',
              bbox_head=dict(
-        type='ATSSFusionHead',
+        type='ATSSFusionIodineHead',
         num_classes=1,
         in_channels=256,
         stacked_convs=4,

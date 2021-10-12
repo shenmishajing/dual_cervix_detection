@@ -7,7 +7,7 @@ _base_ = [
 
 model = dict(type='ATSSFusion',
              bbox_head=dict(
-        type='ATSSFusionHead',
+        type='ATSSMiddleFusionChannelAttentionHead',
         num_classes=1,
         in_channels=256,
         stacked_convs=4,
@@ -61,9 +61,6 @@ lr_config = dict(
 runner = dict(type='EpochBasedRunner', max_epochs=24)
 
 
-# offset size 7
-#offset 乘以shape
-#shift之后的图size为0时用原图替代。
 
 
 

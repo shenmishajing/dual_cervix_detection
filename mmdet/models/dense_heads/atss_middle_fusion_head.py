@@ -7,7 +7,7 @@ from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize
 import numpy as np
 
 @HEADS.register_module()
-class ATSSFusionHead(ATSSHead):
+class ATSSMiddleFusionHead(ATSSHead):
     """Simplest base roi head including one bbox head and one mask head."""
 
     def __init__(self,
@@ -20,7 +20,7 @@ class ATSSFusionHead(ATSSHead):
                  init_cfg=dict(type='Normal',layer='Conv2d',std=0.01,override=dict(type='Normal',name='atss_cls',std=0.01,bias_prob=0.01)),
                  enlarge=False,
                  **kwargs):
-        super(ATSSFusionHead, self).__init__(num_classes=num_classes,
+        super(ATSSMiddleFusionHead, self).__init__(num_classes=num_classes,
                  in_channels=in_channels,
                  stacked_convs=stacked_convs,
                  conv_cfg=conv_cfg,
@@ -36,31 +36,35 @@ class ATSSFusionHead(ATSSHead):
         #     nn.ReLU(),
         #     nn.Linear(self.bbox_head.conv_out_channels, 2), #rescale
         # ])
-        self.offset_modules = nn.ModuleList([
-            nn.Linear(2*256*7*7,256),
-            nn.ReLU(),
-            nn.Linear(256, 256),
-            nn.ReLU(),
-            nn.Linear(256, 2),  # rescale
-        ])
+        # self.offset_modules = nn.ModuleList([
+        #     nn.Linear(2*256*7*7,256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 2),  # rescale
+        # ])
 
         # # fusion b
         # self.fusion_modules_b = nn.ModuleList([
         #     nn.Conv2d(2 * self.bbox_head.conv_out_channels, self.bbox_head.conv_out_channels,3,stride=1, padding=1),
         #     nn.ReLU()
         # ])
-        # fusion b
-        self.fusion_modules_b = nn.ModuleList([
-            nn.Conv2d(2 * 256, 256, 3, stride=1, padding=1),
-            nn.ReLU()
+        # # fusion b
+        # self.fusion_modules_b = nn.ModuleList([
+        #     nn.Conv2d(2 * 256, 256, 3, stride=1, padding=1),
+        #     nn.ReLU()
+        # ])
+
+        out_chan = [256, 256, 256, 256, 256]
+        # self.fusion_module = nn.ModuleList([
+        #     nn.Conv2d(self.neck[self.stages[0]].out_channels * 2, self.neck[self.stages[0]].out_channels, 3)
+        #     for _ in range(self.neck[self.stages[0]].num_outs)
+        # ])
+        self.fusion_module = nn.ModuleList([
+            nn.Conv2d(out_chan[i] * 2, out_chan[i], 3, stride=1, padding=1)
+            for i in range(len(out_chan))
         ])
 
-    def fusion_feature(self, prim_feats, aux_feats):
-        # # fusion B
-        feats = torch.cat([prim_feats, aux_feats], dim=1)
-        for m in self.fusion_modules_b:
-            feats = m(feats)
-        return feats
 
     def _offset_forward(self, feats):
 
@@ -70,51 +74,15 @@ class ATSSFusionHead(ATSSHead):
             feats = m(feats)
         return feats
 
-    def fusion_befor(self,acid_feats, iodine_feats,img_metas):
-        x = []
-        for lev in range(len(acid_feats)):
-            acid_offsets = self._offset_forward(torch.cat([acid_feats[lev], iodine_feats[lev]], dim=1))  ### for fusion 1 and fusion 2
-            acid_offsets = acid_offsets * acid_offsets.new_tensor(acid_feats[lev].size()[2:])  ### only for fusion 2
-            if acid_feats[0].size()[0] ==2:
-                acid_feats_lev_0 = acid_feats[lev][0][:,
-                                   int(acid_offsets[0][0]):int(acid_feats[lev].size()[2] + acid_offsets[0][0]),
-                                   int(acid_offsets[0][1]):int(acid_feats[lev].size()[3] + acid_offsets[0][1])]
-                acid_feats_lev_1 = acid_feats[lev][1][:,
-                                   int(acid_offsets[1][0]):int(acid_feats[lev].size()[2] + acid_offsets[1][0]),
-                                   int(acid_offsets[1][1]):int(acid_feats[lev].size()[3] + acid_offsets[1][1])]
-                # 裁出的图size 为0 时用原图替代
-                if acid_feats_lev_0.size()[1]==0 or acid_feats_lev_0.size()[2]==0:
-                    acid_feats_lev_0 = acid_feats[lev][0]
-                if acid_feats_lev_1.size()[1]==0 or acid_feats_lev_1.size()[2]==0:
-                    acid_feats_lev_1 = acid_feats[lev][1]
-
-                acid_feats_lev_0 = np.resize(acid_feats_lev_0.clone().detach().cpu().numpy(),
-                                             tuple(iodine_feats[lev][0].size()))
-                acid_feats_lev_1 = np.resize(acid_feats_lev_1.clone().detach().cpu().numpy(),
-                                             tuple(iodine_feats[lev][0].size()))
-
-                acid_feats_lev_0 = torch.tensor(np.expand_dims(acid_feats_lev_0, axis=0), requires_grad=True).cuda()
-                acid_feats_lev_1 = torch.tensor(np.expand_dims(acid_feats_lev_1, axis=0), requires_grad=True).cuda()
-                acid_feats_lev = torch.cat([acid_feats_lev_0, acid_feats_lev_1], dim=0)
-            elif acid_feats[0].size()[0] ==1:
-                acid_feats_lev_0 = acid_feats[lev][0][:,
-                                   int(acid_offsets[0][0]):int(acid_feats[lev].size()[2] + acid_offsets[0][0]),
-                                   int(acid_offsets[0][1]):int(acid_feats[lev].size()[3] + acid_offsets[0][1])]
-                # 裁出的图size 为0 时用原图替代
-                if acid_feats_lev_0.size()[1]==0 or acid_feats_lev_0.size()[2]==0:
-                    acid_feats_lev_0 = acid_feats[lev][0]
-
-                acid_feats_lev_0 = np.resize(acid_feats_lev_0.clone().detach().cpu().numpy(),
-                                             tuple(iodine_feats[lev][0].size()))
-                acid_feats_lev_0 = torch.tensor(np.expand_dims(acid_feats_lev_0, axis=0), requires_grad=True).cuda()
-                acid_feats_lev = acid_feats_lev_0
-            else:
-                print('error dimention')
-
-            x.append(self.fusion_feature(acid_feats_lev, iodine_feats[lev]))
-
-        x = tuple(x)
-        return x
+    def feature_fusion(self, acid_feats, iodine_feats):
+        feats = []
+        for i in range(len(self.fusion_module)):
+            acid_feat = acid_feats[i]
+            iodine_feat = iodine_feats[i]
+            feat = torch.cat([acid_feat, iodine_feat], dim=1)
+            feat = self.fusion_module[i](feat)
+            feats.append(feat)
+        return feats
 
 
 
@@ -145,7 +113,7 @@ class ATSSFusionHead(ATSSHead):
                 losses: (dict[str, Tensor]): A dictionary of loss components.
                 proposal_list (list[Tensor]): Proposals of each image.
         """
-        x = self.fusion_befor(acid_feats, iodine_feats, img_metas)
+        x = self.feature_fusion(acid_feats, iodine_feats)
 
         outs = self(x)
         if gt_labels is None:
@@ -200,7 +168,7 @@ class ATSSFusionHead(ATSSHead):
                 with shape (n,)
         """
 
-        feats = self.fusion_befor(acid_feats, iodine_feats, img_metas)
+        feats = self.feature_fusion(acid_feats, iodine_feats)
 
         outs = self(feats)
         results_list = self.get_bboxes(*outs, img_metas, rescale=rescale)
