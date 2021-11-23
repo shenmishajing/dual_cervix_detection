@@ -150,6 +150,8 @@ class CervixDataset(CocoDataset):
         frocs = -np.ones((K, T, M))
         rec_img_list = -np.ones((K, T, M))
         recalls_fp_rates = -np.ones((K, T, M, F))
+        rec_bboxs = -np.ones((K, T, M))
+        prec_bboxs = -np.ones((K, T, M))
 
         for k_i, cls_name in enumerate(self._class_names):
             if k_i not in predictions:
@@ -158,13 +160,15 @@ class CervixDataset(CocoDataset):
             gts = self.get_cls_gts(annos, k_i)
             for t_i, thresh in enumerate(self._iou_threshs):  # iou from 0.5 to 0.95, step 0.05
                 for m_i, max_det in enumerate(self._max_dets):
-                    max_rec, ap, froc, rec_img, recall_fp_rates  = self.eval(dts, gts, ovthresh = thresh / 100,
+                    max_rec, ap, froc, rec_img, recall_fp_rates,rec_bbox,prec_bbox = self.eval(dts, gts, ovthresh = thresh / 100,
                                                                              max_det = max_det, fp_rates=self._fp_rates)
                     aps[k_i, t_i, m_i] = ap * 100
                     ars[k_i, t_i, m_i] = max_rec * 100
                     frocs[k_i, t_i, m_i] = froc * 100
                     rec_img_list[k_i, t_i, m_i] = rec_img * 100
                     recalls_fp_rates[k_i, t_i, m_i, :] = [x * 100 for x in recall_fp_rates]
+                    rec_bboxs[k_i, t_i, m_i] = rec_bbox * 100
+                    prec_bboxs[k_i, t_i, m_i] = prec_bbox * 100
 
         self._result = {
             'aps' + suffix: aps,
@@ -172,6 +176,8 @@ class CervixDataset(CocoDataset):
             'frocs' + suffix: frocs,
             'rec_img_list' + suffix: rec_img_list,
             'recalls_fp_rates': recalls_fp_rates,
+            'rec_bboxs' + suffix: rec_bboxs,
+            'prec_bboxs' + suffix: prec_bboxs,
         }
 
         record = self.summarize(suffix)
@@ -193,6 +199,12 @@ class CervixDataset(CocoDataset):
             if type == 'ap':
                 title_str = 'Average Precision'
                 metric_res = np.mean(self._result['aps' + suffix][:, tind, mind])
+            elif type == 'rec_bbox':
+                title_str = 'recall for bbox'
+                metric_res = np.mean(self._result['rec_bboxs' + suffix][:, tind, mind])
+            elif type == 'prec_bbox':
+                title_str = 'precision for bbox'
+                metric_res = np.mean(self._result['prec_bboxs' + suffix][:, tind, mind])
             elif type == 'ar':
                 title_str = 'Average Recall'
                 metric_res = np.mean(self._result['ars' + suffix][:, tind, mind])
@@ -219,6 +231,20 @@ class CervixDataset(CocoDataset):
             ret[f'AP_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = None, max_det = max_det)
             ret[f'AP50_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = 50, max_det = max_det)
             ret[f'AP75_Top{max_det}' + suffix] = _summarize(type = 'ap', iou_t = 75, max_det = max_det)
+
+        # rec_bbox
+        for max_det in self._max_dets:
+            ret[f'rec_bbox_Top{max_det}' + suffix] = _summarize(type='rec_bbox', iou_t=None, max_det=max_det)
+            ret[f'rec_bbox50_Top{max_det}' + suffix] = _summarize(type='rec_bbox', iou_t=50, max_det=max_det)
+            ret[f'rec_bbox75_Top{max_det}' + suffix] = _summarize(type='rec_bbox', iou_t=75, max_det=max_det)
+
+        # prec_bbox
+        for max_det in self._max_dets:
+            ret[f'prec_bbox_Top{max_det}' + suffix] = _summarize(type='prec_bbox', iou_t=None, max_det=max_det)
+            ret[f'prec_bbox50_Top{max_det}' + suffix] = _summarize(type='prec_bbox', iou_t=50, max_det=max_det)
+            ret[f'prec_bbox75_Top{max_det}' + suffix] = _summarize(type='prec_bbox', iou_t=75, max_det=max_det)
+
+
         # ar
         for max_det in self._max_dets:
             ret[f'AR_Top{max_det}' + suffix] = _summarize(type = 'ar', iou_t = None, max_det = max_det)
@@ -364,7 +390,7 @@ class CervixDataset(CocoDataset):
         max_rec = rec.max()
         rec_img = np.sum(img_m) / len(img_m)
 
-        return max_rec, ap, froc, rec_img, recall_fp_rates
+        return max_rec, ap, froc, rec_img, recall_fp_rates,rec[-1],prec[-1]
 
     @staticmethod
     def voc_ap(rec, prec):

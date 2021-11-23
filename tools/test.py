@@ -252,8 +252,10 @@ def main():
 
 
             # added to test by hhp
-            dic_acid = ['AP50_Top5_acid', 'AP75_Top5_acid', 'AR_Top5_acid', 'iRecall50_Top5_acid', 'iRecall75_Top5_acid']
-            dic_iodine = ['AP50_Top5_iodine', 'AP75_Top5_iodine', 'AR_Top5_iodine', 'iRecall50_Top5_iodine', 'iRecall75_Top5_iodine']
+            dic_acid = ['rec_bbox50_Top3_acid', 'prec_bbox50_Top3_acid', 'iRecall50_Top3_acid',
+                          'rec_bbox50_Top5_acid', 'prec_bbox50_Top5_acid','iRecall50_Top5_acid']
+            dic_iodine = ['rec_bbox50_Top3_iodine', 'prec_bbox50_Top3_iodine', 'iRecall50_Top3_iodine',
+                          'rec_bbox50_Top5_iodine', 'prec_bbox50_Top5_iodine','iRecall50_Top5_iodine']
             metric_acid = []
             metric_iodine = []
             import numpy as np
