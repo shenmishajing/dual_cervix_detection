@@ -242,22 +242,27 @@ app = Flask(__name__,static_folder='/data2/hhp/online/cervix_detect/savemid/', s
 def handle_param():
     if request.method == 'POST':
         try:
-            #img_url = request.form['url']
-            img = request.files['file']
-            pic_name = img.filename[:-3] +'png'
+
+            img_url = request.form['url_iodine']
+            print('img url 1:',img_url)
+            pic_name = img_url.split('/')[-1][:-3] +'png'
             path = "/data2/hhp/online/cervix_detect/savemid/" + pic_name
         except:
             result = "POST参数key name错误，示例：\n" \
                      "key: 'url'，value: 图片url"
             status = 0
+            print('error obtain img path')
         else:
-            img.save(path)
-            img_url = path
+
             try:
-                ori_img = np.array(url_loader(img_url))
+                img = url_loader(img_url)
+                img.save(path)
+                #print('img url 2:', path)
+                ori_img = np.array(img)
             except:
                 result = '图像下载错误'
                 status = 0
+                print(result)
             else:
                 try:
                     result = comput(ori_img,pic_name)
@@ -267,6 +272,7 @@ def handle_param():
                 except:
                     result = 'inference error'
                     status = 0
+                    print(result)
                 else:
                     status = 1
 
@@ -317,7 +323,7 @@ if __name__ == '__main__':
         distributed = True
         init_dist(args.launcher, **cfg.dist_params)
     rank, _ = get_dist_info()
-    print('Using config: ', cfg)
+    #print('Using config: ', cfg)
 
     # transform
     pipeline = Compose(cfg.data.test.pipeline)
@@ -336,21 +342,21 @@ if __name__ == '__main__':
 
 
 
-    #test offline
-    image = Image.open('/data2/share/Cervix_Project/Images/02790641_2019-04-28_3.jpg').convert('RGB')
-    #print('image array sum 1:', np.sum(np.array(image)))
-    image.save("/data2/hhp/online/cervix_detect/savemid/" + '02790641_2019-04-28_3.png')
-    #print(np.sum(np.array(Image.open('./iodine_ori_img.png').convert('RGB'))))
-    comput(np.array(image),'02790641_2019-04-28_3.png')
-    end2 = time.time()
-    print('time1,time2:', end1-begin_time,end2-begin_time)
+    # #test offline
+    # image = Image.open('/data2/share/Cervix_Project/Images/02790641_2019-04-28_3.jpg').convert('RGB')
+    # #print('image array sum 1:', np.sum(np.array(image)))
+    # image.save("/data2/hhp/online/cervix_detect/savemid/" + '02790641_2019-04-28_3.png')
+    # #print(np.sum(np.array(Image.open('./iodine_ori_img.png').convert('RGB'))))
+    # comput(np.array(image),'02790641_2019-04-28_3.png')
+    # end2 = time.time()
+    # print('time1,time2:', end1-begin_time,end2-begin_time)
 
-    # online use
-    # app.run(
-    #     host='0.0.0.0',
-    #     port=6009,  # 35001
-    #     debug=True
-    # )
+    # ##online use
+    app.run(
+        host='0.0.0.0',
+        port=6009,  # 35001
+        debug=True
+    )
 
 
     ## test
