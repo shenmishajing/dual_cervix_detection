@@ -127,18 +127,20 @@ def single_gpu_test(model,
                         iodine_result = result[1][0]
                         acid_result = result[0][0]
 
-                    model.module.show_result(
-                        acid_img_show,
-                        acid_result,
-                        show=show,
-                        out_file=acid_out_file,
-                        score_thr=show_score_thr)
-                    model.module.show_result(
-                        iodine_img_show,
-                        iodine_result,
-                        show=show,
-                        out_file=iodine_out_file,
-                        score_thr=show_score_thr)
+                    if acid_result is not None:
+                        model.module.show_result(
+                            acid_img_show,
+                            acid_result,
+                            show=show,
+                            out_file=acid_out_file,
+                            score_thr=show_score_thr)
+                    if iodine_result is not None:
+                        model.module.show_result(
+                            iodine_img_show,
+                            iodine_result,
+                            show=show,
+                            out_file=iodine_out_file,
+                            score_thr=show_score_thr)
 
             results.extend(result)
 

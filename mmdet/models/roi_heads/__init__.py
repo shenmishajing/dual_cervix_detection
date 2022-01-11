@@ -5,6 +5,7 @@ from .bbox_heads import (BBoxHead, ConvFCBBoxHead, DIIHead,
 from .cascade_roi_head import CascadeRoIHead
 from .double_roi_head import DoubleHeadRoIHead
 from .dual_roi_head import DualRoIHead
+from .dual_labmain_roi_head import DualLabminRoIHead
 from .dynamic_roi_head import DynamicRoIHead
 from .grid_roi_head import GridRoIHead
 from .htc_roi_head import HybridTaskCascadeRoIHead
@@ -35,6 +36,6 @@ __all__ = [
     'SingleRoIExtractor', 'PISARoIHead', 'PointRendRoIHead', 'MaskPointHead',
     'CoarseMaskHead', 'DynamicRoIHead', 'SparseRoIHead', 'TridentRoIHead',
     'SCNetRoIHead', 'SCNetMaskHead', 'SCNetSemanticHead', 'SCNetBBoxHead',
-    'FeatureRelayHead', 'GlobalContextHead', 'DualRoIHead',
+    'FeatureRelayHead', 'GlobalContextHead', 'DualRoIHead','DualLabminRoIHead',
     'DualCervixPrimAuxRoiHead', 'DualCervixDualDetPrimAuxRoiHead', 'DualCervixDualDetPrimAuxAuxOffsetLossRoiHead'
 ]

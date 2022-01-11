@@ -10,6 +10,7 @@ from .detr import DETR
 from .fast_rcnn import FastRCNN
 from .faster_rcnn import FasterRCNN
 from .faster_rcnn_dual import FasterRCNNDual
+from .faster_rcnn_iodine import FasterRCNNIodine
 #from .faster_rcnn_late_fusion import FasterRCNNLateFusion
 from .fcos import FCOS
 from .fovea import FOVEA
@@ -45,6 +46,6 @@ __all__ = [
     'GridRCNN', 'MaskScoringRCNN', 'RepPointsDetector', 'FOVEA', 'FSAF',
     'NASFCOS', 'PointRend', 'GFL', 'CornerNet', 'PAA', 'YOLOV3', 'YOLACT',
     'VFNet', 'DETR', 'TridentFasterRCNN', 'SparseRCNN', 'SparseRepPointsDetector', 'SCNet',
-    'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'FasterRCNNDual',
+    'DeformableDETR', 'AutoAssign', 'YOLOF', 'CenterNet', 'FasterRCNNDual','FasterRCNNIodine',
     'FasterPrimAuxDetector', 'FasterPrimAuxAuxOffsetLossDualDetector'
 ]

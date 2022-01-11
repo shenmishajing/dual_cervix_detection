@@ -118,7 +118,7 @@ def main():
         #         count = 0
         #         k *= 2
         # cfg.work_dir = work_dir
-        cfg.work_dir = osp.join('./work_dirs',
+        cfg.work_dir = osp.join('./workpaper_dirs',
                                 osp.splitext(osp.basename(args.config))[0])
     if args.resume_from is not None:
         cfg.resume_from = args.resume_from
