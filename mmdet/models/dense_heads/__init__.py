@@ -41,6 +41,13 @@ from .atss_middle_fusion_head import ATSSMiddleFusionHead
 from .atss_middle_fusion_channel_attention_head import ATSSMiddleFusionChannelAttentionHead
 from .atss_fusion_attena_head import ATSSFusionAttenaHead
 from .atss_fusion_attenb_head import ATSSFusionAttenbHead
+from .atss_fusion_featloss_head import ATSSFusionFeatlossHead
+from .atss_fusion_stack_head import ATSSFusionStackHead
+from .atss_fusion_selfmix_head import ATSSFusionSelfmixHead
+from .atss_fusion_spatalign_head import ATSSFusionSpatalignHead
+from .atss_fusion_offscore_stack_head import ATSSFusionOffscoreStackHead
+from .atss_fusionmax_stack_head import ATSSFusionmaxStackHead
+from .atss_fusion_spatalign_offscore_head import ATSSFusionSpatalignOffscoreHead
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',
@@ -52,5 +59,7 @@ __all__ = [
     'SABLRetinaHead', 'CentripetalHead', 'VFNetHead', 'StageCascadeRPNHead',
     'CascadeRPNHead', 'EmbeddingRPNHead', 'LDHead', 'CascadeRPNHead',
     'AutoAssignHead', 'DETRHead', 'YOLOFHead', 'DeformableDETRHead','ATSSFusionHead','ATSSFusionIodineHead',
-    'CenterNetHead','ATSSMiddleFusionHead','ATSSMiddleFusionChannelAttentionHead','ATSSFusionAttenaHead','ATSSFusionAttenbHead'
+    'CenterNetHead','ATSSMiddleFusionHead','ATSSMiddleFusionChannelAttentionHead','ATSSFusionAttenaHead','ATSSFusionAttenbHead',
+    'ATSSFusionFeatlossHead','ATSSFusionStackHead','ATSSFusionSelfmixHead','ATSSFusionSpatalignHead','ATSSFusionOffscoreStackHead',
+    'ATSSFusionmaxStackHead','ATSSFusionSpatalignOffscoreHead',
 ]
