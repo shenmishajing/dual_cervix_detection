@@ -7,7 +7,7 @@ from torchvision.transforms import Compose, CenterCrop, ToTensor, Resize
 import numpy as np
 
 @HEADS.register_module()
-class ATSSFusionSpatalignOffscoreHead(ATSSHead):
+class ATSSFusionSpatalign2OffscoreHead(ATSSHead):
     """Simplest base roi head including one bbox head and one mask head."""
 
     def __init__(self,
@@ -20,7 +20,7 @@ class ATSSFusionSpatalignOffscoreHead(ATSSHead):
                  init_cfg=dict(type='Normal',layer='Conv2d',std=0.01,override=dict(type='Normal',name='atss_cls',std=0.01,bias_prob=0.01)),
                  enlarge=False,
                  **kwargs):
-        super(ATSSFusionSpatalignOffscoreHead, self).__init__(num_classes=num_classes,
+        super(ATSSFusionSpatalign2OffscoreHead, self).__init__(num_classes=num_classes,
                  in_channels=in_channels,
                  stacked_convs=stacked_convs,
                  conv_cfg=conv_cfg,
@@ -204,18 +204,18 @@ class ATSSFusionSpatalignOffscoreHead(ATSSHead):
         """
         outs_acid = self(acid_feats)
         outs_iodine = self(iodine_feats)
-        outs_ac0 = torch.mul(acid_feats[0], nn.Sigmoid()(outs_acid[0][0].repeat(1, acid_feats[0].size()[1], 1, 1)))
-        outs_ac1 = torch.mul(acid_feats[1], nn.Sigmoid()(outs_acid[0][1].repeat(1, acid_feats[1].size()[1], 1, 1)))
-        outs_ac2 = torch.mul(acid_feats[2], nn.Sigmoid()(outs_acid[0][2].repeat(1, acid_feats[2].size()[1], 1, 1)))
-        outs_ac3 = torch.mul(acid_feats[3], nn.Sigmoid()(outs_acid[0][3].repeat(1, acid_feats[3].size()[1], 1, 1)))
-        outs_ac4 = torch.mul(acid_feats[4], nn.Sigmoid()(outs_acid[0][4].repeat(1, acid_feats[4].size()[1], 1, 1)))
+        outs_ac0 = torch.mul(acid_feats[0], 0.5+nn.Sigmoid()(outs_acid[0][0].repeat(1, acid_feats[0].size()[1], 1, 1)))
+        outs_ac1 = torch.mul(acid_feats[1], 0.5+nn.Sigmoid()(outs_acid[0][1].repeat(1, acid_feats[1].size()[1], 1, 1)))
+        outs_ac2 = torch.mul(acid_feats[2], 0.5+nn.Sigmoid()(outs_acid[0][2].repeat(1, acid_feats[2].size()[1], 1, 1)))
+        outs_ac3 = torch.mul(acid_feats[3], 0.5+nn.Sigmoid()(outs_acid[0][3].repeat(1, acid_feats[3].size()[1], 1, 1)))
+        outs_ac4 = torch.mul(acid_feats[4], 0.5+nn.Sigmoid()(outs_acid[0][4].repeat(1, acid_feats[4].size()[1], 1, 1)))
 
 
-        outs_io0 = torch.mul(iodine_feats[0], nn.Sigmoid()(outs_iodine[0][0].repeat(1, iodine_feats[0].size()[1], 1, 1)))
-        outs_io1 = torch.mul(iodine_feats[1], nn.Sigmoid()(outs_iodine[0][1].repeat(1, iodine_feats[1].size()[1], 1, 1)))
-        outs_io2 = torch.mul(iodine_feats[2], nn.Sigmoid()(outs_iodine[0][2].repeat(1, iodine_feats[2].size()[1], 1, 1)))
-        outs_io3 = torch.mul(iodine_feats[3], nn.Sigmoid()(outs_iodine[0][3].repeat(1, iodine_feats[3].size()[1], 1, 1)))
-        outs_io4 = torch.mul(iodine_feats[4], nn.Sigmoid()(outs_iodine[0][4].repeat(1, iodine_feats[4].size()[1], 1, 1)))
+        outs_io0 = torch.mul(iodine_feats[0], 0.5+nn.Sigmoid()(outs_iodine[0][0].repeat(1, iodine_feats[0].size()[1], 1, 1)))
+        outs_io1 = torch.mul(iodine_feats[1], 0.5+nn.Sigmoid()(outs_iodine[0][1].repeat(1, iodine_feats[1].size()[1], 1, 1)))
+        outs_io2 = torch.mul(iodine_feats[2], 0.5+nn.Sigmoid()(outs_iodine[0][2].repeat(1, iodine_feats[2].size()[1], 1, 1)))
+        outs_io3 = torch.mul(iodine_feats[3], 0.5+nn.Sigmoid()(outs_iodine[0][3].repeat(1, iodine_feats[3].size()[1], 1, 1)))
+        outs_io4 = torch.mul(iodine_feats[4], 0.5+nn.Sigmoid()(outs_iodine[0][4].repeat(1, iodine_feats[4].size()[1], 1, 1)))
 
         x = self.fusion_befor(tuple([outs_ac0,outs_ac1,outs_ac2,outs_ac3,outs_ac4]), tuple([outs_io0,outs_io1,outs_io2,outs_io3,outs_io4]), img_metas)
 
@@ -273,22 +273,22 @@ class ATSSFusionSpatalignOffscoreHead(ATSSHead):
         """
         outs_acid = self(acid_feats)
         outs_iodine = self(iodine_feats)
-        outs_ac0 = torch.mul(acid_feats[0], nn.Sigmoid()(outs_acid[0][0].repeat(1, acid_feats[0].size()[1], 1, 1)))
-        outs_ac1 = torch.mul(acid_feats[1], nn.Sigmoid()(outs_acid[0][1].repeat(1, acid_feats[1].size()[1], 1, 1)))
-        outs_ac2 = torch.mul(acid_feats[2], nn.Sigmoid()(outs_acid[0][2].repeat(1, acid_feats[2].size()[1], 1, 1)))
-        outs_ac3 = torch.mul(acid_feats[3], nn.Sigmoid()(outs_acid[0][3].repeat(1, acid_feats[3].size()[1], 1, 1)))
-        outs_ac4 = torch.mul(acid_feats[4], nn.Sigmoid()(outs_acid[0][4].repeat(1, acid_feats[4].size()[1], 1, 1)))
+        outs_ac0 = torch.mul(acid_feats[0], 0.5+nn.Sigmoid()(outs_acid[0][0].repeat(1, acid_feats[0].size()[1], 1, 1)))
+        outs_ac1 = torch.mul(acid_feats[1], 0.5+nn.Sigmoid()(outs_acid[0][1].repeat(1, acid_feats[1].size()[1], 1, 1)))
+        outs_ac2 = torch.mul(acid_feats[2], 0.5+nn.Sigmoid()(outs_acid[0][2].repeat(1, acid_feats[2].size()[1], 1, 1)))
+        outs_ac3 = torch.mul(acid_feats[3], 0.5+nn.Sigmoid()(outs_acid[0][3].repeat(1, acid_feats[3].size()[1], 1, 1)))
+        outs_ac4 = torch.mul(acid_feats[4], 0.5+nn.Sigmoid()(outs_acid[0][4].repeat(1, acid_feats[4].size()[1], 1, 1)))
 
         outs_io0 = torch.mul(iodine_feats[0],
-                             nn.Sigmoid()(outs_iodine[0][0].repeat(1, iodine_feats[0].size()[1], 1, 1)))
+                             0.5 +nn.Sigmoid()(outs_iodine[0][0].repeat(1, iodine_feats[0].size()[1], 1, 1)))
         outs_io1 = torch.mul(iodine_feats[1],
-                             nn.Sigmoid()(outs_iodine[0][1].repeat(1, iodine_feats[1].size()[1], 1, 1)))
+                             0.5 +nn.Sigmoid()(outs_iodine[0][1].repeat(1, iodine_feats[1].size()[1], 1, 1)))
         outs_io2 = torch.mul(iodine_feats[2],
-                             nn.Sigmoid()(outs_iodine[0][2].repeat(1, iodine_feats[2].size()[1], 1, 1)))
+                             0.5 +nn.Sigmoid()(outs_iodine[0][2].repeat(1, iodine_feats[2].size()[1], 1, 1)))
         outs_io3 = torch.mul(iodine_feats[3],
-                             nn.Sigmoid()(outs_iodine[0][3].repeat(1, iodine_feats[3].size()[1], 1, 1)))
+                             0.5 +nn.Sigmoid()(outs_iodine[0][3].repeat(1, iodine_feats[3].size()[1], 1, 1)))
         outs_io4 = torch.mul(iodine_feats[4],
-                             nn.Sigmoid()(outs_iodine[0][4].repeat(1, iodine_feats[4].size()[1], 1, 1)))
+                             0.5 +nn.Sigmoid()(outs_iodine[0][4].repeat(1, iodine_feats[4].size()[1], 1, 1)))
 
         feats = self.fusion_befor(tuple([outs_ac0, outs_ac1, outs_ac2, outs_ac3, outs_ac4]),
                               tuple([outs_io0, outs_io1, outs_io2, outs_io3, outs_io4]), img_metas)

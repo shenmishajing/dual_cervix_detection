@@ -48,6 +48,7 @@ from .atss_fusion_spatalign_head import ATSSFusionSpatalignHead
 from .atss_fusion_offscore_stack_head import ATSSFusionOffscoreStackHead
 from .atss_fusionmax_stack_head import ATSSFusionmaxStackHead
 from .atss_fusion_spatalign_offscore_head import ATSSFusionSpatalignOffscoreHead
+from .atss_fusion_spatalign2_offscore_head import ATSSFusionSpatalign2OffscoreHead
 
 __all__ = [
     'AnchorFreeHead', 'AnchorHead', 'GuidedAnchorHead', 'FeatureAdaption',
@@ -61,5 +62,5 @@ __all__ = [
     'AutoAssignHead', 'DETRHead', 'YOLOFHead', 'DeformableDETRHead','ATSSFusionHead','ATSSFusionIodineHead',
     'CenterNetHead','ATSSMiddleFusionHead','ATSSMiddleFusionChannelAttentionHead','ATSSFusionAttenaHead','ATSSFusionAttenbHead',
     'ATSSFusionFeatlossHead','ATSSFusionStackHead','ATSSFusionSelfmixHead','ATSSFusionSpatalignHead','ATSSFusionOffscoreStackHead',
-    'ATSSFusionmaxStackHead','ATSSFusionSpatalignOffscoreHead',
+    'ATSSFusionmaxStackHead','ATSSFusionSpatalignOffscoreHead','ATSSFusionSpatalign2OffscoreHead'
 ]
