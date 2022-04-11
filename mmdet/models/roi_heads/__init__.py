@@ -25,6 +25,8 @@ from .standard_roi_head import StandardRoIHead
 from .atss_assigner_roi_head import ATSSAssignerRoIHead
 from .trident_roi_head import TridentRoIHead
 from .dual_cervix_roi_head import DualCervixPrimAuxRoiHead, DualCervixDualDetPrimAuxRoiHead, DualCervixDualDetPrimAuxAuxOffsetLossRoiHead
+from .dual_consis_roi_head import DualConsisRoIHead
+from .dual_consis_prog_fusj_roi_head import DualConsisProgFusjRoIHead
 
 __all__ = [
     'BaseRoIHead', 'CascadeRoIHead', 'DoubleHeadRoIHead', 'MaskScoringRoIHead',
@@ -37,5 +39,6 @@ __all__ = [
     'CoarseMaskHead', 'DynamicRoIHead', 'SparseRoIHead', 'TridentRoIHead',
     'SCNetRoIHead', 'SCNetMaskHead', 'SCNetSemanticHead', 'SCNetBBoxHead',
     'FeatureRelayHead', 'GlobalContextHead', 'DualRoIHead','DualLabminRoIHead',
-    'DualCervixPrimAuxRoiHead', 'DualCervixDualDetPrimAuxRoiHead', 'DualCervixDualDetPrimAuxAuxOffsetLossRoiHead'
+    'DualCervixPrimAuxRoiHead', 'DualCervixDualDetPrimAuxRoiHead', 'DualCervixDualDetPrimAuxAuxOffsetLossRoiHead','DualConsisRoIHead',
+    'DualConsisProgFusjRoIHead'
 ]
